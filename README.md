@@ -1,14 +1,102 @@
-# astrbot-plugin-helloworld
+# Humanization
 
-AstrBot 插件模板 / A template plugin for AstrBot plugin feature
+AstrBot 群聊内容感知与回复控制插件，作者 **Moonne**，版本 **v0.1.0**。
 
-> [!NOTE]
-> This repo is just a template of [AstrBot](https://github.com/AstrBotDevs/AstrBot) Plugin.
-> 
-> [AstrBot](https://github.com/AstrBotDevs/AstrBot) is an agentic assistant for both personal and group conversations. It can be deployed across dozens of mainstream instant messaging platforms, including QQ, Telegram, Feishu, DingTalk, Slack, LINE, Discord, Matrix, etc. In addition, it provides a reliable and extensible conversational AI infrastructure for individuals, developers, and teams. Whether you need a personal AI companion, an intelligent customer support agent, an automation assistant, or an enterprise knowledge base, AstrBot enables you to quickly build AI applications directly within your existing messaging workflows.
+仓库：https://github.com/Moonnne/astrbot_plugin_humanization
 
-# Supports
+## 支持范围
 
-- [AstrBot Repo](https://github.com/AstrBotDevs/AstrBot)
-- [AstrBot Plugin Development Docs (Chinese)](https://docs.astrbot.app/dev/star/plugin-new.html)
-- [AstrBot Plugin Development Docs (English)](https://docs.astrbot.app/en/dev/star/plugin-new.html)
+- AstrBot `>=4.28.1,<5`，本地 Agent Runner。4.28.1 是所用原生请求收集接口的起始发布版本。
+- aiocqhttp / OneBot v11，例如 NapCat 和 SonwLuma。
+- 群聊整体感知、私聊独立感知。未唤醒主模型的普通消息也可记录。
+- 默认不启用任何会话。插件不会自动改动宿主人格、模型或实际群聊配置。
+
+## 配置与启用
+
+1. 在 AstrBot 插件配置中打开 Humanization。
+2. 在“会话启用范围”多选已知会话，或填写补充 UMO。选择“全部会话”可覆盖所有 OneBot 会话。
+3. 整个群使用 `平台实例:GroupMessage:群号`，例如 `onebot:GroupMessage:123456`。平台实例不是固定的 `aiocqhttp` 字符串；可通过 `/sid` 查看。即使启用了群内成员隔离，选择整个群仍使用群号。
+4. 选择摘要模型和参与门控模型。主回复模型沿用当前 AstrBot 会话模型。
+5. 按需要调整积极性、提示词和主动发言开关，保存后插件热重载。
+
+会话选择框使用宿主已有的会话名称，启动／重载时更新；未显示的会话可手动补充。空范围不记录、不总结、不代理。Controller 关闭时只记录，宿主继续按原规则回复；Recorder 关闭时停止全部接管。
+
+未选摘要模型时只记录原始消息。未选门控模型时普通消息保持安静；默认 `@权重=1` 仍直接请求主模型。主模型或平台不可用时不保证送达。
+
+## 回复规则
+
+- 命令插件照常执行，Humanization 不接管命令回复。
+- Recorder 默认过滤已识别指令及 `/` 前缀的消息。关闭过滤可记录指令输入，但不会接管指令执行；命令插件的输出不作为本插件的角色发言记录。
+- 普通提及由昵称列表识别；默认权重较低。`@机器人` 权重为 1 时绕过随机门控和普通冷却。
+- 积极性是进入语义门控的概率，不是最终发言比例。门控模型可以继续选择安静。
+- 支持多个群聊／私聊积极性时段。使用配置时区；开始时刻包含，结束时刻不包含。跨午夜有效；相同起止表示全天，重叠时段会拒绝加载并在日志说明。
+- 同群共享回复锁。短时间消息会合并观察；明确 @ 的消息逐一处理。其他插件已经发送回复时，本插件不再接话。
+- 原生 Agent 保留当前人格、工具和会话历史；辅助人格片段只取提示正文。可配置工具禁用名单，从已有权限中进一步移除工具。
+
+## 主动发言
+
+主动发言默认关闭，需要单独启用，且对应群必须整体在范围内。默认无人聊天 60 分钟后可评估；评估间隔 15 分钟；距机器人上次发言至少 4 小时；每天最多主动开话题 2 次。
+
+随机概率为“当前时段群聊积极性 × 主动概率系数”，抽样通过后仍需模型判断。23:00—08:00 默认不主动发言。主动发言后无人回应时不会继续追发。新消息（包括被过滤的指令）会使过时的空闲意图失效。
+
+主动事件经过宿主 Pipeline，并使用群公共 UMO 和非管理员调度身份，不借用某位成员的隔离历史或权限。平台发送只使用目标群路由。仍遵守群的宿主会话、LLM、插件开关和白名单。
+
+## 数据与日记
+
+数据位于 AstrBot 插件数据目录的 `chat/db/chat.sqlite3`，与源码分离。固定表：`sessions`、`messages`、`daily_summaries`、`reply_runs`。
+
+- 每个群／私聊默认保留最近 500 条，包括完成原生发送阶段的机器人气泡。
+- 默认每新增 50 条真人消息触发总结，每次最多观察 100 条。须满足 `触发条数 <= 窗口 <= 保留条数`。
+- 保留原 UMO、平台实例、机器人身份、群号、发送者、发送与接收时间、消息 ID 和消息文本／消息段类型。图片、视频和文件只记录 `[image]`、`[video]`、`[file]` 等类型标签，不记录资源地址或内容；本轮主模型媒体处理交给宿主。
+- 摘要按未处理游标追赶，利用已处理消息的重叠窗口衔接；失败不推进游标。超过保留窗口的积压会明确标注覆盖缺口。
+- 每日日记限长，当天可更新，历史封存不可改写。跨日未总结的消息写入当天补记。日期以配置时区的接收／处理时间为准，原消息发送时间保留。
+- 最近两篇日记和观察窗口临时注入，不重复写入 AstrBot 对话历史。历史日记持续保留；不使用向量库或嵌入模型。
+- 配置保存重载后扫描消息库，按新保留条数裁剪。只删除数据库中的过期行，不删除数据库文件。
+- 回复日志最多 1000 条。`processed` 表示收到原生发送后钩子，`unconfirmed` 表示气泡没有完成通知，`filtered` 表示正文被过滤；中断标记为 `unknown`，不自动重发。宿主会捕获部分发送异常，因此完成通知不等于每段发送成功或对方已读。
+
+## 提示词与输出
+
+`resource/prompts/mutsumi_core.md` 提供精简的若叶睦主人格示例，可自行放入 AstrBot 人格。行为、表达、群聊和私聊片段可以分别使用插件文本或 AstrBot 人格正文；都留空时使用内置文本。
+
+输出协议固定为单行正文，以 `$` 分隔 1—3 个气泡，不按普通标点拆分。最终回复采用非流式校验；格式不合规时最多调用主模型修复一次。再次失败则不发送。无法通过语法解析精确识别所有自然语言舞台描写，语义约束仍依赖模型。
+
+Humanization 只缓存本轮最终正文，等原生 Agent 完成工具循环、统计和历史保存后，逐个 `yield` 气泡。每个气泡继续经过宿主内容检查、回复前缀、文转图、TTS、自动引用、原生分段和发送后钩子，插件不直接发送最终正文。协议约束生成的台词，不约束宿主装饰后的文字／语音／图片；原生分段仍可能将一个气泡拆成多条实际消息。
+
+缓存只存在本轮事件的内存中，完成、异常、取消或生成器关闭时清除，不创建额外缓存文件。格式修复失败只过滤正文，保留媒体，并继续 Agent 收尾；不会为格式错误停止整轮事件。工具状态、工具直接发送、一般错误通知和其他插件发送保留各自原生流程，不按角色正文解析。
+
+Recorder 通过原生发送后钩子记录宿主装饰后的消息，媒体仅保留类型标签。为保留宿主取出单独发送的语音段，返回的消息结果继承原生结果类型，并观察其 `derive()` 创建的发送消息链；不替换宿主发送方法。
+
+## 日志与调试模式
+
+在插件配置“日志设置”中切换“启用调试模式”，默认关闭，保存重载后生效。文件位于插件数据目录的 `log/runtime.log` 和 `log/dev.log`，采用 UTF-8／CRLF，每条日志为一行 JSON；换行正文及堆栈在 JSON 字段中转义。
+
+| 模式 | 本插件控制台日志 | runtime.log | dev.log |
+| --- | --- | --- | --- |
+| 普通 | 核心操作与异常类型，显示等级遵循宿主设置 | 最新 1000 行，重载后续存 | 不新增 |
+| 调试 | 不输出 | 保留既有内容，不新增 | 全部核心及调试记录，持续追加，不轮转 |
+
+核心记录覆盖初始化、上下文整理、摘要开始／完成、回复开始／结果与关闭；不包含聊天正文、完整提示词、身份号码或凭据。调试记录覆盖配置、消息筛选、抽样与门控、上下文、模型请求／响应、工具参数／结果、数据库查询与提交、输出修复、原生发送完成及异常堆栈，带回合或关联编号。
+
+凭据字段、常见密钥形式会脱敏，媒体二进制内容省略；调试日志仍包含聊天、提示词及工具文本，不属于可直接公开的数据。`dev.log` 不自动清理，排查结束后可关闭调试并自行归档。日志及运行数据库不应提交到 Git。
+
+日志通过统一工具类分流，控制台使用 AstrBot 提供的插件 logger，文件批量异步写入；不调整全局 handler，不影响宿主及其他插件日志。文件无法写入时仅向宿主报告一次错误类型，即使当前是调试模式。卸载与重载时等待待写记录完成并关闭写入任务。
+
+## 开发与验证
+
+`main.py` 只注册生命周期和事件；业务代码位于 `core/`；`utils/` 扁平存放专职运行时工具类；测试位于 `test/`。
+
+在具备当前 AstrBot 依赖的 Python 环境中运行：
+
+```text
+python -B -m pytest test -q -p no:cacheprovider -o asyncio_mode=auto
+python -B -m ruff check main.py core utils test --no-cache
+python -B -m ruff format main.py core utils test --no-cache --check
+```
+
+测试先将 `ASTRBOT_ROOT` 指向独立临时目录，不访问真实会话数据、不调用真实模型或发送真实群消息。临时产物保留供检查，不执行批量目录清理。测试依赖 `pytest`、`pytest-asyncio`；它们不属于插件运行时依赖。
+
+测试覆盖原生 Pipeline 调度、插件加载与配置、媒体标签、滚动存储、摘要游标、主动发言取消，以及 B 方案的原生装饰／发送、工具循环、发送后钩子和缓存释放。TTS、文转图、模型及平台使用测试替身，实际装饰与发送阶段使用宿主实现；尚未进行真实模型与 OneBot 群聊联调。
+
+插件不声明或安装额外运行依赖。数据库使用 AstrBot 已有的 `aiosqlite`，其余逻辑使用标准库和宿主接口；时区使用标准库 `zoneinfo`。Windows 时区数据由宿主已有的 APScheduler → tzlocal 依赖链提供。
+
+普通消息仍须经过宿主白名单、限流和安全检查；被前置流程拦截的消息无法由此插件记录。统一使用宿主原生请求收集器和临时内容块接口，不保留旧版兼容分支。升级 AstrBot 时应重新运行接入契约测试。

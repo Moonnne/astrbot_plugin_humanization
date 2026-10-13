@@ -1,0 +1,95 @@
+{
+  "logging": {
+    "type": "object", "description": "日志设置",
+    "items": {
+      "debug": {"type": "bool", "description": "启用调试模式", "default": false, "hint": "普通模式：核心日志输出到 AstrBot 控制台及 runtime.log，保留最新1000行；调试模式：详细日志仅追加到 dev.log，不轮转。调试日志包含聊天及模型内容，已知凭据字段及常见密钥格式会脱敏。只控制本插件日志，保存重载后生效。"}
+    }
+  },
+  "scope": {
+    "type": "object",
+    "description": "会话启用范围",
+    "items": {
+      "all_sessions": {"type": "bool", "description": "全部会话", "default": false, "hint": "启用后观察所有 OneBot 会话；Controller 开启时同时抑制默认 LLM 并代理回复。"},
+      "sessions": {"type": "list", "description": "选择已知会话", "default": [], "options": [], "hint": "从宿主已知会话中多选。启动／重载时刷新列表。未选择任何范围时不接管。"},
+      "manual_sessions": {"type": "list", "description": "补充会话 UMO", "default": [], "hint": "尚未出现在选择框中的会话可手动添加，用 /sid 获取 UMO。整个群填写 平台实例:GroupMessage:群号；群内成员隔离时也使用此格式选择整个群。"}
+    }
+  },
+  "recorder": {
+    "type": "object",
+    "description": "Recorder 聊天感知",
+    "items": {
+      "enabled": {"type": "bool", "description": "启用 Recorder", "default": true, "hint": "关闭后也停止 Controller 接管，恢复宿主默认回复。"},
+      "filter_commands": {"type": "bool", "description": "过滤指令模式对话", "default": true, "hint": "已匹配的插件指令和指定指令前缀不入库，不计入摘要触发。命令插件正常执行。"},
+      "command_prefixes": {"type": "list", "description": "额外指令前缀", "default": ["/"], "hint": "补充识别未注册的指令。不应填普通昵称唤醒词。"},
+      "retention": {"type": "int", "description": "每个群／私聊保留消息条数", "default": 500},
+      "window": {"type": "int", "description": "单次摘要最多读取消息条数", "default": 100},
+      "summary_every": {"type": "int", "description": "新增多少条真人消息后触发摘要", "default": 50, "hint": "须满足 触发条数 ≤ 摘要窗口 ≤ 保留条数。积压时从未处理范围开始追赶。"},
+      "summary_provider": {"type": "string", "description": "摘要模型", "default": "", "_special": "select_provider", "hint": "未选择时只记录原始聊天，不调用模型生成日记。"},
+      "summary_chars": {"type": "int", "description": "每日日记最大字符数", "default": 2400},
+      "context_chars": {"type": "int", "description": "消息正文上下文字符预算", "default": 16000},
+      "summary_timeout": {"type": "int", "description": "摘要模型超时（秒）", "default": 60}
+    }
+  },
+  "controller": {
+    "type": "object",
+    "description": "Controller 回复控制",
+    "items": {
+      "enabled": {"type": "bool", "description": "抑制默认 LLM 并代理选中会话", "default": true, "hint": "仅支持本地 Agent Runner。关闭时 Recorder 可继续观察，宿主按原规则回复。"},
+      "gate_provider": {"type": "string", "description": "参与门控模型", "default": "", "_special": "select_provider", "hint": "未选择时普通消息保持安静，@权重为1时仍由主模型回复。"},
+      "timezone": {"type": "string", "description": "时区", "default": "Asia/Shanghai"},
+      "group": {"type": "float", "description": "默认群聊积极性", "default": 0.2, "slider": {"min": 0, "max": 1, "step": 0.05}},
+      "private": {"type": "float", "description": "默认私聊积极性", "default": 0.8, "slider": {"min": 0, "max": 1, "step": 0.05}},
+      "periods": {
+        "type": "template_list", "description": "分时段积极性", "default": [],
+        "templates": {
+          "period": {
+            "name": "时间段", "display_item": "name",
+            "hint": "支持跨午夜，如23:00—08:00；结束时刻不包含在内。起止相同表示全天。时段不能重叠，未覆盖时使用默认积极性。",
+            "items": {
+              "name": {"type": "string", "description": "名称", "default": "夜间"},
+              "start": {"type": "string", "description": "开始 HH:MM", "default": "23:00"},
+              "end": {"type": "string", "description": "结束 HH:MM", "default": "08:00"},
+              "group": {"type": "float", "description": "群聊积极性", "default": 0.05, "slider": {"min": 0, "max": 1, "step": 0.05}},
+              "private": {"type": "float", "description": "私聊积极性", "default": 0.3, "slider": {"min": 0, "max": 1, "step": 0.05}}
+            }
+          }
+        }
+      },
+      "mention_weight": {"type": "float", "description": "普通提及回复权重", "default": 0.3, "slider": {"min": 0, "max": 1, "step": 0.05}},
+      "at_weight": {"type": "float", "description": "@机器人回复权重", "default": 1.0, "slider": {"min": 0, "max": 1, "step": 0.05}, "hint": "1表示直接回复，绕过积极性、普通冷却和语义门控；仍遵守宿主禁用及权限。小于1时参与概率和门控判断。"},
+      "names": {"type": "list", "description": "普通提及名称", "default": [], "hint": "填写机器人昵称，例如睦；不将@他人视为@机器人。"},
+      "cooldown_seconds": {"type": "int", "description": "普通回复冷却（秒）", "default": 20},
+      "debounce_seconds": {"type": "float", "description": "连续消息合并等待（秒）", "default": 1.5},
+      "context_messages": {"type": "int", "description": "门控和主模型观察消息条数", "default": 40},
+      "gate_timeout": {"type": "int", "description": "门控／格式修复超时（秒）", "default": 30},
+      "blocked_tools": {"type": "list", "description": "代理回合禁用的工具名称", "default": [], "hint": "从当前人格的可用工具中进一步移除，不增加权限。"}
+    }
+  },
+  "proactive": {
+    "type": "object", "description": "空闲时主动发言",
+    "items": {
+      "enabled": {"type": "bool", "description": "允许群聊空闲时主动开话题", "default": false},
+      "idle_minutes": {"type": "int", "description": "无人发言多久后允许评估（分钟）", "default": 60},
+      "interval_minutes": {"type": "int", "description": "距上次机器人发言最小间隔（分钟）", "default": 240},
+      "check_minutes": {"type": "int", "description": "评估间隔（分钟）", "default": 15},
+      "probability": {"type": "float", "description": "主动评估概率系数", "default": 0.5, "slider": {"min": 0, "max": 1, "step": 0.05}, "hint": "与当前时段群聊积极性相乘；通过随机抽样后仍由门控模型决定。"},
+      "daily_limit": {"type": "int", "description": "每群每日主动发言次数上限", "default": 2},
+      "quiet_enabled": {"type": "bool", "description": "启用主动发言免打扰时段", "default": true},
+      "quiet_start": {"type": "string", "description": "免打扰开始 HH:MM", "default": "23:00"},
+      "quiet_end": {"type": "string", "description": "免打扰结束 HH:MM", "default": "08:00"}
+    }
+  },
+  "prompts": {
+    "type": "object", "description": "分层提示词（主人格仍使用 AstrBot 当前人格）",
+    "items": {
+      "behavior_persona": {"type": "string", "description": "行为风格人格片段", "default": "", "_special": "select_persona"},
+      "behavior": {"type": "text", "description": "行为风格文本", "default": "", "hint": "供门控模型使用。选择人格片段时以其正文为准，否则使用此文本；两者均空时使用内置默认值。"},
+      "expression_persona": {"type": "string", "description": "表达风格人格片段", "default": "", "_special": "select_persona"},
+      "expression": {"type": "text", "description": "表达风格文本", "default": ""},
+      "group_persona": {"type": "string", "description": "群聊提示词人格片段", "default": "", "_special": "select_persona"},
+      "group": {"type": "text", "description": "群聊提示词文本", "default": ""},
+      "private_persona": {"type": "string", "description": "私聊提示词人格片段", "default": "", "_special": "select_persona"},
+      "private": {"type": "text", "description": "私聊提示词文本", "default": "", "hint": "片段只读取人格提示正文，不合并辅助人格的工具、知识库和开场消息。输出格式协议固定，不由人格片段覆盖。"}
+    }
+  }
+}

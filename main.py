@@ -1,24 +1,98 @@
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
-from astrbot.api.star import Context, Star, register
-from astrbot.api import logger
+"""AstrBot lifecycle and event registration for Humanization."""
 
-@register("helloworld", "YourName", "一个简单的 Hello World 插件", "1.0.0")
-class MyPlugin(Star):
-    def __init__(self, context: Context):
+from contextlib import aclosing
+
+from astrbot.api import AstrBotConfig
+from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.star import Context, Star, StarTools
+
+from .core.astrbot_adapter import ScopeFilter
+from .core.runtime import Runtime
+
+
+class Humanization(Star):
+    def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
+        self.config = config
+        self.runtime = Runtime(context, config, StarTools.get_data_dir(), self.logger)
 
     async def initialize(self):
-        """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
+        await self.runtime.initialize()
+        try:
+            await self.refresh_sessions()
+        except Exception:
+            await self.runtime.terminate()
+            raise
 
-    # 注册指令的装饰器。指令名为 helloworld。注册成功后，发送 `/helloworld` 就会触发这个指令，并回复 `你好, {user_name}!`
-    @filter.command("helloworld")
-    async def helloworld(self, event: AstrMessageEvent):
-        """这是一个 hello world 指令""" # 这是 handler 的描述，将会被解析方便用户了解插件内容。建议填写。
-        user_name = event.get_sender_name()
-        message_str = event.message_str # 用户发的纯文本消息字符串
-        message_chain = event.get_messages() # 用户所发的消息的消息链 # from astrbot.api.message_components import *
-        logger.info(message_chain)
-        yield event.plain_result(f"Hello, {user_name}, 你发了 {message_str}!") # 发送一条纯文本消息
+    @filter.on_astrbot_loaded()
+    async def refresh_sessions(self):
+        choices = await self.runtime.adapter.session_options()
+        choices.update(
+            {umo: choices.get(umo, umo) for umo in self.config["scope"]["sessions"]}
+        )
+        item = self.config.schema["scope"]["items"]["sessions"]
+        item["options"] = list(choices)
+        item["labels"] = list(choices.values())
+        self.runtime.log.debug("scope.options.updated", option_count=len(choices))
+
+    @filter.custom_filter(ScopeFilter, priority=10000)
+    async def observe(self, event: AstrMessageEvent):
+        async with aclosing(self.runtime.observe(event)) as generator:
+            async for result in generator:
+                yield result
+
+    @filter.custom_filter(ScopeFilter, priority=-10000)
+    async def participate(self, event: AstrMessageEvent):
+        async with aclosing(self.runtime.participate(event)) as generator:
+            async for result in generator:
+                yield result
+
+    @filter.on_llm_request(priority=-10000)
+    async def inject(self, event, request):
+        await self.runtime.inject(event, request)
+
+    @filter.on_llm_response(priority=-10000)
+    async def validate(self, event, response):
+        await self.runtime.validate(event, response)
+
+    @filter.on_decorating_result(priority=10000)
+    async def defer_result(self, event):
+        await self.runtime.defer_result(event)
+
+    @filter.after_message_sent(priority=10000)
+    async def after_sent(self, event):
+        await self.runtime.after_sent(event)
+
+    @filter.on_using_llm_tool(priority=10000)
+    async def tool_started(self, event, tool, tool_args):
+        turn = event.get_extra("humanization_turn")
+        if turn:
+            self.runtime.log.debug(
+                "tool.start", tool=tool.name, arguments=tool_args, run=turn["run"]
+            )
+
+    @filter.on_llm_tool_respond(priority=10000)
+    async def tool_finished(self, event, tool, tool_args, tool_result):
+        turn = event.get_extra("humanization_turn")
+        if turn and self.runtime.log.debug_mode:
+            result = []
+            if tool_result:
+                for part in tool_result.content:
+                    result.append(
+                        {"type": part.type, "text": part.text}
+                        if part.type == "text"
+                        else {"type": part.type}
+                    )
+            self.runtime.log.debug(
+                "tool.complete",
+                tool=tool.name,
+                result=result,
+                structured_result=tool_result.structuredContent
+                if tool_result
+                else None,
+                is_error=tool_result.isError if tool_result else False,
+                run=turn["run"],
+            )
 
     async def terminate(self):
-        """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
+        await self.runtime.terminate()
