@@ -43,6 +43,11 @@ class Settings:
         self.controller = config["controller"]
         self.proactive = config["proactive"]
         self.prompts = config["prompts"]
+        if (
+            not isinstance(self.logging["runtime_lines"], int)
+            or self.logging["runtime_lines"] < 1
+        ):
+            raise ValueError("Runtime log window must be a positive integer")
         self.timezone = ZoneInfo(self.controller["timezone"])
         self.periods = [
             ActivityPeriod(

@@ -77,6 +77,13 @@ def test_invalid_summary_window_rejected(config):
         Settings(config)
 
 
+@pytest.mark.parametrize("limit", [0, -1, 2.5])
+def test_invalid_runtime_log_window_rejected(config, limit):
+    config["logging"]["runtime_lines"] = limit
+    with pytest.raises(ValueError, match="positive integer"):
+        Settings(config)
+
+
 @pytest.mark.parametrize(
     "text",
     ["a$$b", "$a", "a$", "a\nb", "a\\nb", "**hello**", "（点头）好", "好😀", "a$b$c$d"],

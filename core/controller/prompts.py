@@ -10,7 +10,10 @@ class Prompts:
         self.storage = storage
         self.persona_manager = persona_manager
         root = Path(__file__).resolve().parents[2] / "resource" / "prompts"
-        self.text = {p.stem: p.read_text(encoding="utf-8") for p in root.glob("*.txt")}
+        self.text = {
+            name: (root / f"{name}.txt").read_text(encoding="utf-8")
+            for name in ("gate", "summary", "output")
+        }
 
     async def fragment(self, name: str) -> str:
         config = self.settings.prompts
@@ -20,7 +23,7 @@ class Prompts:
             if persona is None:
                 raise ValueError(f"Prompt persona does not exist: {persona_id}")
             return persona.system_prompt
-        return config[name].strip() or self.text[name]
+        return config[name].strip()
 
     async def gate(self, private: bool) -> str:
         return "\n\n".join(

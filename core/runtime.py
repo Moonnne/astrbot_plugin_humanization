@@ -34,6 +34,7 @@ class Runtime:
             self.settings.logging["debug"],
             console_logger if console_logger is not None else logger,
             self.settings.timezone,
+            runtime_lines=self.settings.logging["runtime_lines"],
         )
         self.adapter = AstrBotAdapter(context, self.settings, self.log)
         self.generation = uuid.uuid4().hex
@@ -64,6 +65,7 @@ class Runtime:
             "runtime.start",
             debug=self.log.debug_mode,
             retention=self.settings.recorder["retention"],
+            runtime_log_lines=self.log.records.maxlen,
             selected_sessions=len(
                 self.settings.scope["sessions"] + self.settings.scope["manual_sessions"]
             ),

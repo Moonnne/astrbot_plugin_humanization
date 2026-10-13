@@ -185,6 +185,14 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
     root = Path(__file__).resolve().parents[1]
     schema = json.loads((root / "_conf_schema.json").read_text(encoding="utf-8"))
     config = AstrBotConfig(str(tmp_path / "config.json"), schema=schema)
+    assert next(reversed(schema)) == "logging"
+    for name in ("sessions", "manual_sessions"):
+        assert schema["scope"]["items"][name]["condition"] == {"all_sessions": False}
+    config["prompts"]["behavior"] = ""
+    config["prompts"]["group"] = "  "
+    config["prompts"]["expression"] = "Existing custom expression"
+    config["logging"]["runtime_lines"] = 3
+    config.save_config()
     database = SimpleNamespace(
         get_umo_aliases=AsyncMock(
             return_value=[
@@ -209,6 +217,15 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
         assert "onebot:GroupMessage:123" in options
         assert not instance.runtime.settings.scope["sessions"]
         assert instance.runtime.storage.path.exists()
+        saved = json.loads((tmp_path / "config.json").read_text(encoding="utf-8-sig"))
+        for name in ("behavior", "group"):
+            assert saved["prompts"][name] == schema["prompts"]["items"][name]["default"]
+            assert (
+                await instance.runtime.prompts.fragment(name) == saved["prompts"][name]
+            )
+        assert saved["prompts"]["expression"] == "Existing custom expression"
+        assert set(instance.runtime.prompts.text) == {"gate", "summary", "output"}
+        assert instance.runtime.log.records.maxlen == 3
     finally:
         await instance.terminate()
     assert all(task.done() for task in instance.runtime.tasks)

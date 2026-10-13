@@ -15,6 +15,15 @@ class Humanization(Star):
         super().__init__(context)
         self.config = config
         self.runtime = Runtime(context, config, StarTools.get_data_dir(), self.logger)
+        restored = False
+        for name in ("behavior", "expression", "group", "private"):
+            if not config["prompts"][name].strip():
+                config["prompts"][name] = config.schema["prompts"]["items"][name][
+                    "default"
+                ]
+                restored = True
+        if restored:
+            config.save_config()
 
     async def initialize(self):
         await self.runtime.initialize()

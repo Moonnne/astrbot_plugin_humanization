@@ -62,6 +62,26 @@ async def test_debug_appends_all_records_without_console_or_runtime_changes(tmp_
     assert (directory / "runtime.log").read_bytes() == runtime
 
 
+async def test_runtime_window_can_shrink_and_grow_on_reload(tmp_path):
+    directory = tmp_path / "log"
+    for limit, start, end, expected in (
+        (7, 0, 12, list(range(5, 12))),
+        (3, 12, 14, [11, 12, 13]),
+        (10, 14, 16, [11, 12, 13, 14, 15]),
+    ):
+        log = PluginLog(
+            directory, False, Mock(), ZoneInfo("Asia/Shanghai"), runtime_lines=limit
+        )
+        await log.open()
+        assert len(entries(directory / "runtime.log")) <= limit
+        for index in range(start, end):
+            log.info("test.core", index=index)
+        await log.close()
+        assert [
+            row["data"]["index"] for row in entries(directory / "runtime.log")
+        ] == expected
+
+
 async def test_credentials_binary_and_exception_detail_are_masked(tmp_path):
     console = Mock()
     log = PluginLog(tmp_path / "log", True, console, ZoneInfo("Asia/Shanghai"))

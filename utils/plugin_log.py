@@ -23,6 +23,7 @@ class PluginLog:
         debug: Whether all records go exclusively to dev.log.
         console: AstrBot-provided plugin logger; never reconfigured by this class.
         timezone: Configured timezone used for record timestamps.
+        runtime_lines: Maximum number of ordinary log records retained on disk.
     """
 
     _credential_key = re.compile(
@@ -39,13 +40,15 @@ class PluginLog:
     )
     _data_uri = re.compile(r"data:[^\s;,]+;base64,[A-Za-z0-9+/=]+", re.I)
 
-    def __init__(self, directory: Path, debug: bool, console, timezone):
+    def __init__(
+        self, directory: Path, debug: bool, console, timezone, runtime_lines: int = 1000
+    ):
         self.directory = directory
         self.debug_mode = debug
         self.console = console
         self.timezone = timezone
         self.queue = asyncio.Queue()
-        self.records = deque(maxlen=1000)
+        self.records = deque(maxlen=runtime_lines)
         self.trace = contextvars.ContextVar("humanization_log_trace", default="")
         self.worker = None
         self.closed = True
