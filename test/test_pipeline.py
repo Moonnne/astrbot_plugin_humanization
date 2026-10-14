@@ -290,7 +290,11 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
     config = AstrBotConfig(str(tmp_path / "config.json"), schema=schema)
     assert config["controller"]["mode"] == "scheduled"
     assert config["controller"]["force_at"] is True
-    assert next(reversed(schema)) == "logging"
+    assert next(reversed(schema)) == "danger"
+    assert list(schema["recorder"]["items"])[:2] == ["enabled", "summary_provider"]
+    assert list(schema["controller"]["items"])[:2] == ["enabled", "gate_provider"]
+    for name in ("wait_min_seconds", "wait_max_seconds"):
+        assert schema["controller"]["items"][name]["condition"] == {"mode": "scheduled"}
     for name in ("sessions", "manual_sessions"):
         assert schema["scope"]["items"][name]["condition"] == {"all_sessions": False}
     config["prompts"]["behavior"] = ""

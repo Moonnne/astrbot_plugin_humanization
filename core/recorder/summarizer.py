@@ -3,6 +3,7 @@
 import asyncio
 import json
 from datetime import datetime
+from time import perf_counter
 
 
 class Summarizer:
@@ -48,10 +49,19 @@ class Summarizer:
                     continue
                 async with self.log.context("summary"):
                     self.active_scope = session["scope"]
+                    started = perf_counter()
                     try:
                         await self.summarize(session, pending)
                     except Exception:
-                        self.log.exception("summary.failed", cursor=session["cursor"])
+                        self.log.exception(
+                            "summary.failed",
+                            conversation=session["umo"]
+                            if session["private"]
+                            else group_umo,
+                            message_count=0,
+                            candidate_count=len(pending),
+                            duration_seconds=round(perf_counter() - started, 3),
+                        )
                     finally:
                         self.active_scope = None
 
@@ -62,6 +72,7 @@ class Summarizer:
             session: Persisted cursor and message counters.
             pending: Earliest retained messages after the cursor.
         """
+        started = perf_counter()
         config = self.settings.recorder
         selected = []
         size = 0
@@ -179,8 +190,10 @@ class Summarizer:
         )
         self.log.info(
             "summary.complete",
-            through_seq=through,
+            conversation=session["umo"]
+            if session["private"]
+            else f"{session['platform']}:GroupMessage:{session['group_id']}",
             message_count=len(selected),
-            diary_chars=len(body),
-            coverage_gap=gap,
+            context_count=len(payload["messages"]),
+            duration_seconds=round(perf_counter() - started, 3),
         )

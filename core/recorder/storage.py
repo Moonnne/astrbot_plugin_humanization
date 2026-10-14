@@ -1,12 +1,13 @@
 """Bounded SQLite conversation storage with transactional summary cursors."""
 
 import asyncio
+import json
 from dataclasses import asdict
 from pathlib import Path
 
 import aiosqlite
 
-from ..models import Message
+from ..models import Message, ResetTarget
 
 
 class Storage:
@@ -306,6 +307,51 @@ class Storage:
                         (scope, day),
                     )
                 await self.db.execute("DELETE FROM sessions WHERE scope=?", (scope,))
+                await self.db.commit()
+            except BaseException:
+                await self.db.rollback()
+                raise
+
+    async def reset_targets(self) -> list[ResetTarget]:
+        """Locate current sessions and diary-only scopes retained by a today reset.
+
+        Returns:
+            Native routes and identities of every persisted plugin conversation.
+        """
+        targets = [
+            ResetTarget(
+                row["scope"],
+                row["umo"],
+                row["platform"],
+                row["self_id"],
+                row["group_id"],
+                bool(row["private"]),
+            )
+            for row in await self.rows("SELECT * FROM sessions")
+        ]
+        for row in await self.rows(
+            "SELECT DISTINCT scope FROM daily_summaries WHERE scope NOT IN (SELECT scope FROM sessions)"
+        ):
+            platform, self_id, kind, sid = json.loads(row["scope"])
+            private = kind == "private"
+            targets.append(
+                ResetTarget(
+                    row["scope"],
+                    f"{platform}:{'FriendMessage' if private else 'GroupMessage'}:{sid}",
+                    platform,
+                    self_id,
+                    "" if private else sid,
+                    private,
+                )
+            )
+        return targets
+
+    async def reset_all(self):
+        """Delete every plugin row atomically, keeping the database file and schema."""
+        async with self.lock:
+            try:
+                for table in ("messages", "reply_runs", "daily_summaries", "sessions"):
+                    await self.db.execute(f"DELETE FROM {table}")
                 await self.db.commit()
             except BaseException:
                 await self.db.rollback()

@@ -91,6 +91,14 @@ class Settings:
         if any(not 0 <= float(v) <= 1 for v in probabilities):
             raise ValueError("Activity and reply weights must be between 0 and 1")
         r = self.recorder
+        if (
+            not isinstance(r["minimum_context_messages"], int)
+            or isinstance(r["minimum_context_messages"], bool)
+            or not 1 <= r["minimum_context_messages"] <= r["retention"]
+        ):
+            raise ValueError(
+                "Minimum context count must be an integer within retention"
+            )
         if not 1 <= r["summary_every"] <= r["window"] <= r["retention"]:
             raise ValueError("Require 1 <= summary_every <= window <= retention")
         if not 1 <= self.controller["context_messages"] <= r["retention"]:

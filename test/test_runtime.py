@@ -44,6 +44,8 @@ def test_default_is_opt_in(config):
     settings = Settings(config)
     assert settings.controller["mode"] == "scheduled"
     assert settings.controller["force_at"] is True
+    assert settings.recorder["minimum_context_enabled"] is True
+    assert settings.recorder["minimum_context_messages"] == 50
     assert not settings.selected("onebot:GroupMessage:123", "onebot:GroupMessage:123")
     config["scope"]["sessions"] = ["onebot:GroupMessage:123"]
     assert settings.selected("onebot:GroupMessage:42_123", "onebot:GroupMessage:123")

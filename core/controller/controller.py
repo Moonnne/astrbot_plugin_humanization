@@ -4,6 +4,7 @@ import asyncio
 import json
 import random
 from datetime import datetime
+from time import perf_counter
 
 from ..models import Decision
 
@@ -84,6 +85,12 @@ class Controller:
             ensure_ascii=False,
             separators=(",", ":"),
         )
+        conversation = (
+            message.umo
+            if message.private
+            else f"{message.platform}:GroupMessage:{message.group_id}"
+        )
+        started = perf_counter()
         try:
             async with asyncio.timeout(cfg["gate_timeout"]):
                 raw = await self.generate(
@@ -102,13 +109,25 @@ class Controller:
                 action=result["action"],
                 intent=result.get("intent", ""),
             )
+            self.log.info(
+                "gate.complete",
+                conversation=conversation,
+                action=result["action"],
+                intent=result.get("intent", "")[:120],
+                duration_seconds=round(perf_counter() - started, 3),
+            )
             return Decision(
                 result["action"] == "reply",
                 result.get("intent", "")[:500],
                 "reply" if result["action"] == "reply" else "semantic_wait",
             )
         except Exception:
-            self.log.exception("gate.failed", action="wait")
+            self.log.exception(
+                "gate.failed",
+                conversation=conversation,
+                action="wait",
+                duration_seconds=round(perf_counter() - started, 3),
+            )
             return Decision(False, reason="error")
 
     def idle_due(

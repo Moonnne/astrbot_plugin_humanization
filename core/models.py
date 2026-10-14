@@ -23,6 +23,16 @@ class Message:
 
 
 @dataclass(frozen=True)
+class ResetTarget:
+    scope: str
+    umo: str
+    platform: str
+    self_id: str
+    group_id: str
+    private: bool
+
+
+@dataclass(frozen=True)
 class Decision:
     reply: bool
     intent: str = ""

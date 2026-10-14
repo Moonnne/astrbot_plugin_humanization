@@ -30,6 +30,19 @@ class Humanization(Star):
     async def initialize(self):
         await self.runtime.initialize()
         try:
+            danger = self.config["danger"]
+            if danger["clear_all_data"]:
+                confirmation = danger["confirmation"]
+                # Persist disarming before deletion so reload cannot repeat the action.
+                danger["clear_all_data"] = False
+                danger["confirmation"] = ""
+                self.config.save_config()
+                if confirmation == self.runtime.admin.all_confirmation:
+                    await self.runtime.reset_all()
+                else:
+                    self.runtime.log.info(
+                        "admin.reset_all.rejected", reason="confirmation_mismatch"
+                    )
             await self.refresh_sessions()
         except Exception:
             await self.runtime.terminate()
@@ -83,8 +96,8 @@ class Humanization(Star):
     @hum.custom_filter(ManagementAccessFilter)
     @hum.command("reset_data")
     @filter.permission_type(filter.PermissionType.ADMIN, raise_error=False)
-    async def reset_data(self, event: AstrMessageEvent, mode: str = ""):
-        text = await self.runtime.admin.request_reset(event, mode)
+    async def reset_data(self, event: AstrMessageEvent, mode: str = "", umo: str = ""):
+        text = await self.runtime.admin.request_reset(event, mode, umo)
         if text:
             yield event.plain_result(text)
         event.stop_event()

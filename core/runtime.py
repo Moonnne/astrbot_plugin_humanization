@@ -52,6 +52,9 @@ class Runtime:
         self.active_scopes = {}
         self.record_locks = {}
         self.reset_since = {}
+        self.reset_versions = {}
+        self.reset_lock = asyncio.Lock()
+        self.resetting_all = False
         self.summary_task = None
         self.closed = False
         self.storage = Storage(
@@ -116,6 +119,9 @@ class Runtime:
     async def observe(self, event: AstrMessageEvent):
         if self.closed or event.get_extra("humanization_management"):
             return
+        if self.resetting_all:
+            event.should_call_llm(True)
+            return
         scheduled = event.get_extra("humanization_scheduled")
         if scheduled:
             ticket = self.scheduler.claim(event)
@@ -142,8 +148,17 @@ class Runtime:
             return
         if str(event.get_self_id()) == str(event.get_sender_id()):
             return
-        scope = self.adapter.snapshot(event).scope
+        message = self.adapter.snapshot(event)
+        scope = message.scope
+        version = self.reset_versions.get(scope, 0)
         async with self.record_locks.setdefault(scope, asyncio.Lock()):
+            if (
+                self.resetting_all
+                or version != self.reset_versions.get(scope, 0)
+                or message.received_at < self.reset_since.get(scope, 0)
+            ):
+                event.should_call_llm(True)
+                return
             command = self.adapter.is_command(event)
             self.log.debug(
                 "message.inspect",
@@ -163,13 +178,11 @@ class Runtime:
             if command and self.settings.recorder["filter_commands"]:
                 # Command handlers still run; unmatched prefixes must not fall through to LLM.
                 event.should_call_llm(True)
-                message = self.adapter.snapshot(event)
                 await self.storage.update_session(
                     message.scope, last_human=message.received_at, idle_waiting=0
                 )
                 self.log.debug("message.filtered", reason="command")
                 return
-            message = self.adapter.snapshot(event)
             if await self.storage.append(message):
                 event.set_extra("humanization_message", message)
                 if self.settings.controller["mode"] == "scheduled" and not command:
@@ -186,9 +199,16 @@ class Runtime:
                 self.log.debug("message.filtered", reason="duplicate")
 
     async def participate(self, event: AstrMessageEvent):
-        if self.closed or not event.get_extra("humanization_claimed"):
+        if (
+            self.closed
+            or self.resetting_all
+            or not event.get_extra("humanization_claimed")
+        ):
             return
         if event.get_extra("humanization_command") or event._has_send_oper:
+            return
+        message = event.get_extra("humanization_message")
+        if message is not None and not await self.ready_context(message.scope):
             return
         if self.settings.controller["mode"] == "scheduled":
             message = event.get_extra("humanization_message")
@@ -199,6 +219,39 @@ class Runtime:
         async with aclosing(self.turn(event)) as generator:
             async for request in generator:
                 yield request
+
+    async def ready_context(self, scope, through_seq=None):
+        """Gate replies by the Recorder's currently retained message rows.
+
+        Args:
+            scope: Canonical group or private-chat scope.
+            through_seq: Optional submitted batch cutoff, excluding newer inputs.
+
+        Returns:
+            Whether the initial observation period has completed.
+        """
+        cfg = self.settings.recorder
+        if not cfg["minimum_context_enabled"]:
+            return True
+        if through_seq is None:
+            rows = await self.storage.rows(
+                "SELECT COUNT(*) AS count FROM messages WHERE scope=?", (scope,)
+            )
+        else:
+            rows = await self.storage.rows(
+                "SELECT COUNT(*) AS count FROM messages WHERE scope=? AND seq<=?",
+                (scope, through_seq),
+            )
+        count = rows[0]["count"] if rows else 0
+        ready = count >= cfg["minimum_context_messages"]
+        if not ready:
+            self.log.debug(
+                "reply.skipped",
+                reason="minimum_context",
+                available=count,
+                required=cfg["minimum_context_messages"],
+            )
+        return ready
 
     async def turn(self, event, idle: bool = False, scheduled=None):
         """Hold group ownership across the native pipeline's generator yield.
@@ -232,7 +285,15 @@ class Runtime:
         outcome = "skipped"
         try:
             async with self.log.context("reply"), self.controller.lock(message.scope):
-                if self.closed or not await self.adapter.can_reply(event):
+                if (
+                    self.closed
+                    or self.resetting_all
+                    or not await self.adapter.can_reply(event)
+                ):
+                    return
+                if not await self.ready_context(
+                    message.scope, scheduled.sequence if scheduled is not None else None
+                ):
                     return
                 session = await self.storage.session(message.scope)
                 direct_at = any(
@@ -549,7 +610,10 @@ class Runtime:
                 for session in await self.storage.rows(
                     "SELECT * FROM sessions WHERE private=0"
                 ):
-                    if session["scope"] in self.summarizer.resetting:
+                    if (
+                        self.resetting_all
+                        or session["scope"] in self.summarizer.resetting
+                    ):
                         continue
                     group_umo = (
                         f"{session['platform']}:GroupMessage:{session['group_id']}"
@@ -558,6 +622,8 @@ class Runtime:
                     if not self.settings.selected(
                         group_umo, group_umo
                     ) or not self.controller.idle_due(session, now):
+                        continue
+                    if not await self.ready_context(session["scope"]):
                         continue
                     if self.controller.lock(session["scope"]).locked():
                         self.log.debug(
@@ -598,16 +664,73 @@ class Runtime:
                 self.log.exception("idle.worker.failed")
 
     async def reset_scope(self, message, day: str | None):
+        async with self.reset_lock:
+            await self._reset_scope(message, day)
+
+    async def reset_all(self):
+        """Pause plugin work and reset every recorded scope, including disabled ones.
+
+        Returns:
+            The number of plugin conversation scopes reset.
+        """
+        async with self.reset_lock:
+            self.resetting_all = True
+            self.admin.close()
+            summary = self.summary_task
+            restart_summary = summary is not None and not summary.done()
+            try:
+                if summary is not None:
+                    summary.cancel()
+                    await asyncio.gather(summary, return_exceptions=True)
+                    self.tasks.discard(summary)
+                    self.summary_task = None
+                active = list(self.active)
+                for task in active:
+                    task.cancel()
+                await asyncio.gather(*active, return_exceptions=True)
+                targets = await self.storage.reset_targets()
+                now = time.time()
+                scopes = (
+                    {target.scope for target in targets}
+                    | set(self.record_locks)
+                    | set(self.scheduler.states)
+                )
+                self.reset_since.update(dict.fromkeys(scopes, now))
+                for scope in scopes:
+                    self.reset_versions[scope] = self.reset_versions.get(scope, 0) + 1
+                for scope in list(self.scheduler.states):
+                    self.scheduler.reset(scope)
+                self.log.info("admin.reset_all.start", conversations=len(targets))
+                for target in targets:
+                    await self._reset_scope(target, None)
+                await self.storage.reset_all()
+                self.controller.locks.clear()
+                self.record_locks.clear()
+                self.log.info("admin.reset_all.complete", conversations=len(targets))
+                return len(targets)
+            except Exception:
+                self.log.exception("admin.reset_all.failed")
+                raise
+            finally:
+                self.resetting_all = False
+                if restart_summary and not self.closed:
+                    self.summary_task = asyncio.create_task(
+                        self.summary_loop(), name="humanization-summary"
+                    )
+                    self.tasks.add(self.summary_task)
+
+    async def _reset_scope(self, message, day: str | None):
         """Stop old work and reset one plugin scope and its native routes.
 
         Args:
-            message: Original management event snapshot defining the target scope.
+            message: Message or ResetTarget defining the plugin scope and native route.
             day: Diary date to delete, or None to delete every diary in this scope.
         """
         scope = message.scope
         async with self.record_locks.setdefault(scope, asyncio.Lock()):
             self.scheduler.reset(scope)
             self.reset_since[scope] = time.time()
+            self.reset_versions[scope] = self.reset_versions.get(scope, 0) + 1
             self.summarizer.resetting.add(scope)
             restart_summary = self.summarizer.active_scope == scope
             try:
