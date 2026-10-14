@@ -85,6 +85,15 @@ class Humanization(Star):
         """Humanization administration."""
 
     @hum.custom_filter(ManagementAccessFilter)
+    @hum.command("info")
+    @filter.permission_type(filter.PermissionType.ADMIN, raise_error=False)
+    async def info(self, event: AstrMessageEvent, umo: str = ""):
+        text = await self.runtime.admin.info(event, umo)
+        if text:
+            yield event.plain_result(text)
+        event.stop_event()
+
+    @hum.custom_filter(ManagementAccessFilter)
     @hum.command("clear", alias={"claer"})
     @filter.permission_type(filter.PermissionType.ADMIN, raise_error=False)
     async def clear_log(self, event: AstrMessageEvent, target: str = ""):

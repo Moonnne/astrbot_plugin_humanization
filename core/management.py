@@ -63,6 +63,129 @@ class Management:
         self.runtime.log.console.info("Humanization admin cleared %s", name)
         return "done"
 
+    async def info(self, event, umo: str = "") -> str:
+        """Inspect Recorder metadata without recording a command or invoking models.
+
+        Args:
+            event: Administrator's command event, providing the default scope.
+            umo: Optional group or private route; group member routes share records.
+
+        Returns:
+            A named, six-line status report or an input/empty-scope explanation.
+        """
+        if not self.allowed(event):
+            return ""
+        if event.get_platform_name() != "aiocqhttp":
+            return "当前插件的聊天数据查询仅支持 OneBot 会话"
+        message = self.runtime.adapter.snapshot(event)
+        try:
+            route = MessageSession.from_str(umo or message.umo)
+        except ValueError:
+            return "UMO 格式错误，应为 [平台实例]:GroupMessage:[群号] 或 [平台实例]:FriendMessage:[用户号]；请替换为实际值，不输入方括号，可用 /sid 查看实际 UMO"
+        if (
+            not route.platform_id
+            or not route.session_id
+            or route.message_type
+            not in (MessageType.GROUP_MESSAGE, MessageType.FRIEND_MESSAGE)
+        ):
+            return "仅支持有效的 OneBot 群聊或私聊 UMO"
+        private = route.message_type == MessageType.FRIEND_MESSAGE
+        sid = route.session_id if private else route.session_id.rsplit("_", 1)[-1]
+        scope = message.scope if not umo else None
+        if umo:
+            for target in await self.runtime.storage.reset_targets():
+                if target.platform != route.platform_id or target.private != private:
+                    continue
+                if (private and target.umo == umo) or (
+                    not private and target.group_id == sid
+                ):
+                    scope = target.scope
+                    break
+        query_umo = f"{route.platform_id}:{route.message_type.value}:{sid}"
+        aliases = await self.runtime.context.get_db().get_umo_aliases()
+        matching = [
+            row
+            for row in aliases
+            if row.umo == query_umo
+            or (
+                not private
+                and row.umo.startswith(f"{route.platform_id}:GroupMessage:")
+                and row.umo.split(":", 2)[2].endswith("_" + sid)
+            )
+        ]
+        matching.sort(key=lambda row: row.umo != query_umo)
+        name = next(
+            (
+                row.user_alias or row.auto_name
+                for row in matching
+                if row.user_alias or row.auto_name
+            ),
+            f"{'用户' if private else '群'} {sid}",
+        )
+        heading = (
+            f"[{'私聊' if private else '群聊'}]{' '.join(name.split())} : {query_umo}"
+        )
+        data = {"message_count": 0, "diary_count": 0, "pending_count": 0}
+        diary = []
+        if scope is not None:
+            # Hold only the DB write lock; a model call never owns this lock.
+            async with self.runtime.storage.lock:
+                data = (
+                    await self.runtime.storage.rows(
+                        "SELECT (SELECT COUNT(*) FROM messages WHERE scope=?) AS message_count,"
+                        "(SELECT COUNT(*) FROM daily_summaries WHERE scope=?) AS diary_count,"
+                        "COALESCE((SELECT human_count-summarized_count FROM sessions WHERE scope=?),0) AS pending_count",
+                        (scope, scope, scope),
+                    )
+                )[0]
+                diary = await self.runtime.storage.rows(
+                    "SELECT day,through_seq,updated_at FROM daily_summaries WHERE scope=? ORDER BY day DESC LIMIT 1",
+                    (scope,),
+                )
+        settings = self.runtime.settings
+        now = datetime.now(settings.timezone).strftime("%Y-%m-%d %H:%M:%S %z")
+        if not data["message_count"] and not data["diary_count"]:
+            enabled = settings.recorder["enabled"] and settings.selected(
+                str(route), query_umo
+            )
+            status = (
+                ("指定会话无记录" if umo else "当前会话无记录")
+                if enabled
+                else "会话未启用插件"
+            )
+            return f"{heading}\n{status}\n查询时间：{now}"
+        version = "暂无日记"
+        if diary:
+            current = diary[0]
+            created = datetime.fromtimestamp(
+                current["updated_at"], settings.timezone
+            ).strftime("%Y-%m-%d %H:%M:%S %z")
+            version = f"{current['day']}@seq{current['through_seq']}（版本生成时间：{created}）"
+        models = []
+        for provider_id in (
+            settings.recorder["summary_provider"],
+            settings.controller["gate_provider"],
+        ):
+            if not provider_id:
+                models.append("未配置")
+                continue
+            provider = self.runtime.context.get_provider_by_id(provider_id)
+            models.append(
+                f"{provider.get_model() or '模型名未指定'}（{provider_id}）"
+                if provider
+                else f"不可用（{provider_id}）"
+            )
+        return "\n".join(
+            (
+                heading,
+                f"聊天记录：{settings.recorder['retention']}/{data['message_count']}（上限/已有条数）",
+                f"现行日记版本：{version}；日记总数：{data['diary_count']}；摘要进度：{settings.recorder['summary_every']}/{data['pending_count']}（触发条数/待总结新消息）",
+                f"Recorder 模型：{models[0]}",
+                f"Controller 模型：{models[1]}",
+                f"查询时间：{now}",
+            )
+        )
+
     async def request_reset(self, event, mode: str, umo: str = "") -> str:
         """Bind a reset to its requester while resolving an optional private-chat target.
 
@@ -84,7 +207,7 @@ class Management:
         if previous:
             previous["timer"].cancel()
         if mode not in ("all", "today"):
-            return "未知的指令参数\n用法：/hum reset_data all [UMO] 或 /hum reset_data today [UMO]"
+            return "未知的指令参数\n用法：/hum reset_data all [UMO] 或 /hum reset_data today [UMO]\n[UMO] 为可选参数，填写时替换为实际 UMO，不输入方括号"
         targets = [message]
         if umo:
             if not event.is_private_chat():
@@ -92,7 +215,7 @@ class Management:
             try:
                 route = MessageSession.from_str(umo)
             except ValueError:
-                return "UMO 格式错误，应为 平台实例:GroupMessage:群号 或 平台实例:FriendMessage:用户号"
+                return "UMO 格式错误，应为 [平台实例]:GroupMessage:[群号] 或 [平台实例]:FriendMessage:[用户号]；方括号内为占位符，填写时替换为实际值，不输入方括号。可用 /sid 查看实际 UMO"
             if (
                 not route.platform_id
                 or not route.session_id
@@ -121,7 +244,7 @@ class Management:
                 )
             ]
             if not targets:
-                return "该 UMO 没有可定位的 Humanization 会话数据，未创建重置请求"
+                return "该 UMO 没有可定位的 Humanization 会话数据，未创建重置请求。请用 /sid 核对实际 UMO，勿直接输入 [平台实例] 等占位符"
         entry = {
             "mode": mode,
             "day": datetime.now(self.runtime.settings.timezone).date().isoformat(),

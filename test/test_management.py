@@ -262,6 +262,8 @@ async def test_reset_cancels_pending_summary_without_restoring_diary(managed):
     [
         "/hum",
         "/hum clear",
+        "/hum info",
+        "/hum info onebot:GroupMessage:123",
         "/hum reset_data wrong",
         "/hum IClearKnowWhatIDoingNow",
         "/hum unknown",
