@@ -1,5 +1,6 @@
 """Integration with AstrBot's native request collector and event interfaces."""
 
+import asyncio
 import json
 import time
 import uuid
@@ -7,11 +8,15 @@ from datetime import datetime
 
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import At, Plain, Reply
+from astrbot.core.agent.context.token_counter import EstimateTokenCounter
+from astrbot.core.agent.message import Message as AgentMessage
 from astrbot.core.agent.message import TextPart
 from astrbot.core.astr_main_agent import MainAgentBuildConfig, collect_initial_request
+from astrbot.core.pipeline.process_stage.follow_up import _ACTIVE_AGENT_RUNNERS
 from astrbot.core.platform.astrbot_message import AstrBotMessage, MessageMember
 from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.platform.message_type import MessageType
+from astrbot.core.provider.entities import TokenUsage
 from astrbot.core.star.filter.command import CommandFilter
 from astrbot.core.star.filter.command_group import CommandGroupFilter
 from astrbot.core.star.session_llm_manager import SessionServiceManager
@@ -144,34 +149,15 @@ class AstrBotAdapter:
         ).lstrip()
         return self.settings.is_command_text(raw)
 
-    def filter_command_history(self, event, request):
-        """Remove identifiable command inputs from this plugin's model request.
+    def filter_command_quote(self, event, request):
+        """Remove command quotations from this turn's additional input.
 
         Args:
             event: Incoming non-command event supplying any quoted message.
-            request: Native request whose resulting history is saved by AstrBot.
+            request: Native request retaining its original conversation history.
         """
-        if not self.settings.recorder["filter_commands"]:
+        if not self.settings.recorder["filter_llm_commands"]:
             return
-        retained = []
-        excluded = False
-        for item in request.contexts:
-            if item["role"] == "user":
-                content = item.get("content") or ""
-                text = (
-                    content
-                    if isinstance(content, str)
-                    else "\n".join(
-                        part.get("text", "")
-                        for part in content
-                        if part.get("type") == "text"
-                    )
-                )
-                excluded = self.settings.is_command_text(text)
-            if not excluded:
-                retained.append(item)
-        removed = len(request.contexts) - len(retained)
-        request.contexts = retained
         for part in event.get_messages():
             if not isinstance(part, Reply):
                 continue
@@ -191,7 +177,79 @@ class AstrBotAdapter:
                         and entry.text.startswith("<Quoted Message>\n")
                     )
                 ]
-        self.log.debug("context.commands.filtered", removed_history_items=removed)
+
+    def filter_agent_history(self, event, run_context):
+        """Keep command rounds outside inference and native compression.
+
+        Args:
+            event: Event owning this plugin's current Agent turn.
+            run_context: Native context assembled before its first model call.
+        """
+        turn = event.get_extra("humanization_turn")
+        if not turn:
+            return
+        # Read the native per-UMO runner only for counters; never replace it.
+        runner = _ACTIVE_AGENT_RUNNERS.get(event.unified_msg_origin)
+        if runner is not None:
+            turn["usage_runner"] = runner
+            turn["usage_previous"] = TokenUsage()
+        if not self.settings.recorder["filter_llm_commands"]:
+            return
+        original = run_context.messages
+        retained = []
+        removed = set()
+        excluded = False
+        for message in original:
+            if message.role == "user":
+                content = message.content or ""
+                text = (
+                    content
+                    if isinstance(content, str)
+                    else "\n".join(
+                        part.text for part in content if isinstance(part, TextPart)
+                    )
+                )
+                excluded = self.settings.is_command_text(text)
+            if excluded:
+                removed.add(id(message))
+            else:
+                retained.append(message)
+        if removed:
+            turn["command_history"] = (original, removed)
+            run_context.messages = retained
+        self.log.debug("context.commands.filtered", removed_history_items=len(removed))
+
+    def restore_agent_history(self, event, run_context):
+        """Restore excluded rounds before the native history writer runs.
+
+        Args:
+            event: Event owning the temporary command-history references.
+            run_context: Finished native context, possibly compressed or truncated.
+        """
+        turn = event.get_extra("humanization_turn")
+        saved = turn.pop("command_history", None) if turn else None
+        if saved is None:
+            return
+        original, removed = saved
+        messages = run_context.messages
+        positions = {id(message): index for index, message in enumerate(messages)}
+        insertions = {}
+        position = len(messages)
+        # Dropped normal rounds stay dropped; command rounds precede the next
+        # surviving original message, even when older anchors were compressed.
+        for message in reversed(original):
+            identity = id(message)
+            if identity in positions:
+                position = positions[identity]
+            elif identity in removed:
+                insertions.setdefault(position, []).append(message)
+        restored = []
+        for index in range(len(messages) + 1):
+            restored.extend(reversed(insertions.get(index, [])))
+            if index < len(messages):
+                restored.append(messages[index])
+        run_context.messages = restored
+        self.log.debug("context.commands.restored", restored_history_items=len(removed))
 
     async def can_reply(self, event) -> bool:
         if isinstance(event, IdleEvent):
@@ -263,18 +321,176 @@ class AstrBotAdapter:
             ]
         )
 
-    async def generate(self, provider: str, system: str, prompt: str) -> str:
+    async def generate(
+        self, provider: str, system: str, prompt: str, purpose: str = "auxiliary"
+    ) -> str:
         started = time.monotonic()
-        self.log.debug(
-            "model.request", provider=provider, system_prompt=system, prompt=prompt
+        estimate = EstimateTokenCounter().count_tokens(
+            [
+                AgentMessage(role="system", content=system),
+                AgentMessage(role="user", content=prompt),
+            ]
         )
-        response = await self.context.llm_generate(
-            chat_provider_id=provider, system_prompt=system, prompt=prompt
+        self.log.debug(
+            "model.request",
+            provider=provider,
+            purpose=purpose,
+            system_prompt=system,
+            prompt=prompt,
+            estimated_input=estimate,
+        )
+        try:
+            response = await self.context.llm_generate(
+                chat_provider_id=provider, system_prompt=system, prompt=prompt
+            )
+        except (Exception, asyncio.CancelledError) as exc:
+            self.record_model_usage(
+                purpose,
+                provider,
+                estimate,
+                None,
+                None,
+                elapsed_ms=round((time.monotonic() - started) * 1000),
+                status="cancelled"
+                if isinstance(exc, asyncio.CancelledError)
+                else "error",
+                error_type=type(exc).__name__,
+            )
+            raise
+        self.record_model_usage(
+            purpose,
+            provider,
+            estimate,
+            response.usage,
+            response,
+            elapsed_ms=round((time.monotonic() - started) * 1000),
+            status="error" if response.role == "err" else "ok",
         )
         self.log.debug(
             "model.response",
             provider=provider,
             text=response.completion_text,
             elapsed_ms=round((time.monotonic() - started) * 1000),
+            usage={
+                "input": response.usage.input,
+                "input_cached": response.usage.input_cached,
+                "output": response.usage.output,
+                "total": response.usage.total,
+            }
+            if response.usage is not None
+            else None,
         )
         return response.completion_text
+
+    def record_model_usage(
+        self, purpose, provider, estimate, usage, response, **fields
+    ):
+        """Record available provider counters without copying model contents.
+
+        Args:
+            purpose: Controller, Recorder, format repair or main-model role.
+            provider: Configured provider identifier.
+            estimate: Heuristic estimate of the supplied message content.
+            usage: Native TokenUsage, or None when unavailable.
+            response: Model response supplying optional raw usage counters.
+            **fields: Call status, duration and accounting scope.
+        """
+        raw = response.raw_completion if response is not None else None
+        raw_usage = (
+            raw.get("usage") if isinstance(raw, dict) else getattr(raw, "usage", None)
+        )
+        if raw_usage is not None and not isinstance(raw_usage, dict):
+            raw_usage = raw_usage.model_dump()
+        details = {}
+        if raw_usage:
+            for source, target in (
+                ("prompt_tokens", "input"),
+                ("input_tokens", "input"),
+                ("completion_tokens", "output"),
+                ("output_tokens", "output"),
+                ("total_tokens", "total"),
+                ("prompt_cache_hit_tokens", "cache_read"),
+                ("prompt_cache_miss_tokens", "cache_miss"),
+                ("cache_read_input_tokens", "cache_read"),
+                ("cache_creation_input_tokens", "cache_write"),
+            ):
+                if source in raw_usage:
+                    details[target] = raw_usage[source]
+            input_details = (
+                raw_usage.get("prompt_tokens_details")
+                or raw_usage.get("input_tokens_details")
+                or {}
+            )
+            if "cached_tokens" in input_details:
+                details["cache_read"] = input_details["cached_tokens"]
+            output_details = (
+                raw_usage.get("completion_tokens_details")
+                or raw_usage.get("output_tokens_details")
+                or {}
+            )
+            if "reasoning_tokens" in output_details:
+                details["reasoning"] = output_details["reasoning_tokens"]
+        cached = details.get(
+            "cache_read", usage.input_cached if usage is not None else None
+        )
+        fields.setdefault("scope", "call")
+        self.log.model_usage(
+            purpose=purpose,
+            provider=provider,
+            estimated_input=estimate,
+            usage={
+                "input": usage.input,
+                "input_cached": cached,
+                "output": usage.output,
+                "total": usage.total,
+            }
+            if usage is not None
+            else None,
+            provider_details=details or None,
+            cache_source="provider"
+            if "cache_read" in details
+            else "native"
+            if usage is not None
+            else None,
+            cache_ratio=cached / usage.input
+            if usage is not None and usage.input and cached is not None
+            else None,
+            response_id=response.id if response is not None else None,
+            **fields,
+        )
+
+    def record_main_usage(self, event):
+        """Consume native cumulative counters once per observable Agent step.
+
+        Args:
+            event: Event whose tool or completion hook has finished a model step.
+        """
+        turn = event.get_extra("humanization_turn")
+        if not turn or "usage_runner" not in turn:
+            return
+        runner = turn["usage_runner"]
+        stats = runner.stats
+        if not stats.end_time or turn.get("usage_time") == stats.end_time:
+            return
+        usage = stats.token_usage - turn["usage_previous"]
+        turn["usage_previous"] = stats.token_usage
+        turn["usage_time"] = stats.end_time
+        messages = runner.run_context.messages
+        estimate = EstimateTokenCounter().count_tokens(
+            messages[:-1] if messages and messages[-1].role == "assistant" else messages
+        )
+        response = runner.get_final_llm_resp()
+        self.record_model_usage(
+            "main",
+            runner.provider.provider_config.get("id", ""),
+            estimate,
+            usage if usage.total or (response and response.usage is not None) else None,
+            response,
+            scope="native_step",
+            run=turn["run"],
+            status="cancelled"
+            if runner.was_aborted()
+            else "error"
+            if response and response.role == "err"
+            else "ok",
+        )

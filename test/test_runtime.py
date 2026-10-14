@@ -77,11 +77,18 @@ def test_invalid_summary_window_rejected(config):
         Settings(config)
 
 
-@pytest.mark.parametrize("limit", [0, -1, 2.5])
-def test_invalid_runtime_log_window_rejected(config, limit):
-    config["logging"]["runtime_lines"] = limit
-    with pytest.raises(ValueError, match="positive integer"):
+@pytest.mark.parametrize("key", ["runtime_max_mb", "dev_max_mb"])
+@pytest.mark.parametrize("limit", [-1, float("inf"), float("nan"), "5", True])
+def test_invalid_log_size_limit_rejected(config, key, limit):
+    config["logging"][key] = limit
+    with pytest.raises(ValueError, match="non-negative"):
         Settings(config)
+
+
+@pytest.mark.parametrize("limit", [0, 0.5, 5])
+def test_nonnegative_log_size_limits_are_valid(config, limit):
+    config["logging"].update(runtime_max_mb=limit, dev_max_mb=limit)
+    Settings(config)
 
 
 @pytest.mark.parametrize(
@@ -191,7 +198,7 @@ async def test_gate_invalid_json_stays_silent(storage, config, log):
     config["controller"].update(group=1, gate_provider="gate")
     await storage.append(message(1))
     prompts = SimpleNamespace(
-        gate=AsyncMock(return_value="gate"), context=AsyncMock(return_value="context")
+        gate=AsyncMock(return_value="gate"), context=AsyncMock(return_value="{}")
     )
     control = Controller(
         Settings(config), storage, AsyncMock(return_value="not json"), prompts, log

@@ -242,7 +242,7 @@ async def test_reset_cancels_pending_summary_without_restoring_diary(managed):
     managed.settings.recorder.update(summary_provider="summary", summary_every=1)
     started = asyncio.Event()
 
-    async def generate(*args):
+    async def generate(*args, **kwargs):
         started.set()
         await asyncio.Event().wait()
 

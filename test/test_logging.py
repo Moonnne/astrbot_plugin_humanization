@@ -14,28 +14,45 @@ def entries(path):
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
-async def test_runtime_rolls_exactly_1000_lines_across_reload(tmp_path):
+@pytest.mark.parametrize("debug", [False, True])
+async def test_byte_rolling_keeps_latest_complete_utf8_records_across_reload(
+    tmp_path, debug
+):
     console = Mock()
     directory = tmp_path / "log"
-    log = PluginLog(directory, False, console, ZoneInfo("Asia/Shanghai"))
+    log = PluginLog(
+        directory,
+        debug,
+        console,
+        ZoneInfo("Asia/Shanghai"),
+        runtime_max_mb=2048 / 1024**2,
+        dev_max_mb=2048 / 1024**2,
+    )
     await log.open()
-    for index in range(1025):
-        log.info("test.core", index=index)
-    log.debug("test.private", text="never written")
+    for index in range(100):
+        log.info("test.core", index=index, text="聊天记录" * 20)
     await log.close()
-    rows = entries(directory / "runtime.log")
-    assert len(rows) == 1000
-    assert rows[0]["data"]["index"] == 25
-    assert console.log.call_count == 1025
-    assert (directory / "dev.log").read_bytes() == b""
-    assert b"never written" not in (directory / "runtime.log").read_bytes()
-    assert b"\n" not in (directory / "runtime.log").read_bytes().replace(b"\r\n", b"")
-    next_log = PluginLog(directory, False, console, ZoneInfo("Asia/Shanghai"))
+    path = directory / ("dev.log" if debug else "runtime.log")
+    rows = entries(path)
+    assert 0 < len(rows) < 100
+    assert rows[-1]["data"]["index"] == 99
+    assert rows[0]["data"]["index"] > 0
+    assert path.stat().st_size <= 2048
+    assert b"\n" not in path.read_bytes().replace(b"\r\n", b"")
+    assert console.log.call_count == (0 if debug else 100)
+    next_log = PluginLog(
+        directory,
+        debug,
+        console,
+        ZoneInfo("Asia/Shanghai"),
+        runtime_max_mb=2048 / 1024**2,
+        dev_max_mb=2048 / 1024**2,
+    )
     await next_log.open()
     next_log.info("test.reloaded")
     await next_log.close()
-    rows = entries(directory / "runtime.log")
-    assert len(rows) == 1000 and rows[0]["data"]["index"] == 26
+    rows = entries(path)
+    assert path.stat().st_size <= 2048
     assert rows[-1]["event"] == "test.reloaded"
 
 
@@ -62,24 +79,84 @@ async def test_debug_appends_all_records_without_console_or_runtime_changes(tmp_
     assert (directory / "runtime.log").read_bytes() == runtime
 
 
-async def test_runtime_window_can_shrink_and_grow_on_reload(tmp_path):
+async def test_size_limits_can_shrink_grow_or_be_disabled_on_reload(tmp_path):
     directory = tmp_path / "log"
-    for limit, start, end, expected in (
-        (7, 0, 12, list(range(5, 12))),
-        (3, 12, 14, [11, 12, 13]),
-        (10, 14, 16, [11, 12, 13, 14, 15]),
+    previous = []
+    for limit, start, end in (
+        (4096, 0, 100),
+        (2048, 100, 110),
+        (8192, 110, 112),
+        (0, 112, 212),
     ):
         log = PluginLog(
-            directory, False, Mock(), ZoneInfo("Asia/Shanghai"), runtime_lines=limit
+            directory,
+            False,
+            Mock(),
+            ZoneInfo("Asia/Shanghai"),
+            runtime_max_mb=limit / 1024**2,
         )
         await log.open()
-        assert len(entries(directory / "runtime.log")) <= limit
+        path = directory / "runtime.log"
+        assert not limit or path.stat().st_size <= limit
+        if limit >= 8192 or limit == 0:
+            assert [row["data"]["index"] for row in entries(path)] == previous
         for index in range(start, end):
-            log.info("test.core", index=index)
+            log.info("test.core", index=index, text="内容" * 30)
         await log.close()
-        assert [
-            row["data"]["index"] for row in entries(directory / "runtime.log")
-        ] == expected
+        assert not limit or path.stat().st_size <= limit
+        previous = [row["data"]["index"] for row in entries(path)]
+        assert previous[-1] == end - 1
+    assert path.stat().st_size > 8192
+
+
+@pytest.mark.parametrize("debug", [False, True])
+async def test_model_usage_always_reaches_runtime_without_console(tmp_path, debug):
+    console = Mock()
+    log = PluginLog(tmp_path / "log", debug, console, ZoneInfo("Asia/Shanghai"))
+    await log.open()
+    log.model_usage(purpose="controller", estimated_input=123, cache_ratio=0.75)
+    await log.close()
+    row = entries(log.directory / "runtime.log")[0]
+    assert row["event"] == "model.usage"
+    assert row["data"]["cache_ratio"] == 0.75
+    assert console.mock_calls == []
+    assert len(entries(log.directory / "dev.log")) == int(debug)
+
+
+@pytest.mark.parametrize("debug", [False, True])
+async def test_zero_limits_append_without_rolling(tmp_path, debug):
+    log = PluginLog(
+        tmp_path / "log",
+        debug,
+        Mock(),
+        ZoneInfo("Asia/Shanghai"),
+        runtime_max_mb=0,
+        dev_max_mb=0,
+    )
+    await log.open()
+    for index in range(1500):
+        log.info("test.unlimited", index=index)
+    await log.close()
+    assert len(entries(log.directory / ("dev.log" if debug else "runtime.log"))) == 1500
+
+
+async def test_oversized_record_is_skipped_without_truncating_other_json_rows(tmp_path):
+    log = PluginLog(
+        tmp_path / "log",
+        True,
+        Mock(),
+        ZoneInfo("Asia/Shanghai"),
+        dev_max_mb=1024 / 1024**2,
+    )
+    await log.open()
+    log.debug("test.before")
+    log.debug("test.oversized", text="large" * 500)
+    log.debug("test.after")
+    await log.close()
+    assert [row["event"] for row in entries(log.directory / "dev.log")] == [
+        "test.before",
+        "test.after",
+    ]
 
 
 async def test_credentials_binary_and_exception_detail_are_masked(tmp_path):
@@ -233,7 +310,9 @@ async def test_project_log_routing_and_private_text(
         assert "private input" in raw and "private reply" in raw
         assert "privatekey" not in raw
         assert any(row["event"] == "model.response" for row in rows)
-        assert (tmp_path / "log" / "runtime.log").read_bytes() == b""
+        assert [row["event"] for row in entries(tmp_path / "log" / "runtime.log")] == [
+            "model.usage"
+        ]
     else:
         assert console.log.called
         assert "private input" not in raw and "private reply" not in raw
@@ -251,7 +330,9 @@ async def test_tool_hooks_record_results_without_credentials_or_image_bodies(tmp
     log = PluginLog(tmp_path / "log", True, Mock(), ZoneInfo("Asia/Shanghai"))
     await log.open()
     instance = Humanization.__new__(Humanization)
-    instance.runtime = SimpleNamespace(log=log)
+    instance.runtime = SimpleNamespace(
+        log=log, adapter=SimpleNamespace(record_main_usage=Mock())
+    )
     event = Event()
     event.set_extra("humanization_turn", {"run": 4})
     tool = SimpleNamespace(name="test_tool")

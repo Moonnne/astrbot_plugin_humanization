@@ -1,4 +1,4 @@
-"""Mode-aware plugin logging with bounded runtime records and async file writes."""
+"""Mode-aware plugin logging with byte limits and asynchronous file writes."""
 
 import asyncio
 import contextvars
@@ -9,7 +9,6 @@ import re
 import sys
 import traceback
 import uuid
-from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -20,10 +19,11 @@ class PluginLog:
 
     Args:
         directory: Dedicated plugin log directory.
-        debug: Whether all records go exclusively to dev.log.
+        debug: Whether detailed records go to dev.log instead of the console.
         console: AstrBot-provided plugin logger; never reconfigured by this class.
         timezone: Configured timezone used for record timestamps.
-        runtime_lines: Maximum number of ordinary log records retained on disk.
+        runtime_max_mb: Runtime file limit in MiB; zero disables rolling.
+        dev_max_mb: Development file limit in MiB; zero disables rolling.
     """
 
     _credential_key = re.compile(
@@ -41,14 +41,26 @@ class PluginLog:
     _data_uri = re.compile(r"data:[^\s;,]+;base64,[A-Za-z0-9+/=]+", re.I)
 
     def __init__(
-        self, directory: Path, debug: bool, console, timezone, runtime_lines: int = 1000
+        self,
+        directory: Path,
+        debug: bool,
+        console,
+        timezone,
+        runtime_max_mb: float = 5,
+        dev_max_mb: float = 10,
     ):
         self.directory = directory
         self.debug_mode = debug
         self.console = console
         self.timezone = timezone
         self.queue = asyncio.Queue()
-        self.records = deque(maxlen=runtime_lines)
+        self.limits = {
+            name: max(1, int(size * 1024 * 1024)) if size else 0
+            for name, size in (
+                ("runtime.log", runtime_max_mb),
+                ("dev.log", dev_max_mb),
+            )
+        }
         self.trace = contextvars.ContextVar("humanization_log_trace", default="")
         self.worker = None
         self.closed = True
@@ -57,18 +69,9 @@ class PluginLog:
     async def open(self):
         def prepare():
             self.directory.mkdir(parents=True, exist_ok=True)
-            runtime = self.directory / "runtime.log"
-            dev = self.directory / "dev.log"
-            runtime.touch(exist_ok=True)
-            dev.touch(exist_ok=True)
-            if not self.debug_mode:
-                with runtime.open(encoding="utf-8") as stream:
-                    self.records.extend(
-                        line.rstrip("\r\n") for line in stream if line.strip()
-                    )
-                runtime.write_bytes(
-                    "".join(line + "\r\n" for line in self.records).encode("utf-8")
-                )
+            for name in self.limits:
+                (self.directory / name).touch(exist_ok=True)
+                self._trim_file(name)
 
         try:
             await asyncio.to_thread(prepare)
@@ -142,6 +145,14 @@ class PluginLog:
         if self.debug_mode:
             self._emit("DEBUG", event, details)
 
+    def model_usage(self, **fields):
+        """Persist model counters in runtime.log without console output.
+
+        Args:
+            **fields: Counters and call metadata, excluding prompts and responses.
+        """
+        self._emit("INFO", "model.usage", fields, runtime_only=True)
+
     def exception(self, event: str, **fields):
         error = sys.exc_info()[1]
         if error is not None:
@@ -150,7 +161,7 @@ class PluginLog:
                 fields["exception"] = "".join(traceback.format_exception(error))
         self._emit("ERROR", event, fields)
 
-    def _emit(self, level: str, event: str, fields: dict):
+    def _emit(self, level: str, event: str, fields: dict, runtime_only: bool = False):
         if self.closed:
             return
         payload = self.redact(fields)
@@ -161,8 +172,12 @@ class PluginLog:
             "trace": self.trace.get(),
             "data": payload,
         }
-        self.queue.put_nowait(json.dumps(record, ensure_ascii=False))
-        if not self.debug_mode:
+        names = ["dev.log"] if self.debug_mode else ["runtime.log"]
+        if runtime_only and "runtime.log" not in names:
+            names.append("runtime.log")
+        line = json.dumps(record, ensure_ascii=False)
+        self.queue.put_nowait(dict.fromkeys(names, line))
+        if not self.debug_mode and not runtime_only:
             self.console.log(
                 getattr(logging, level),
                 "Humanization %s %s",
@@ -199,19 +214,18 @@ class PluginLog:
             self.queue.put_nowait(None)
             await self.worker
             self.worker = None
-        self.records.clear()
 
     async def _write_loop(self):
         while True:
             first = await self.queue.get()
             batch = [first]
             while (
-                isinstance(batch[-1], str)
+                isinstance(batch[-1], dict)
                 and len(batch) < 128
                 and not self.queue.empty()
             ):
                 batch.append(self.queue.get_nowait())
-            lines = [line for line in batch if isinstance(line, str)]
+            lines = [line for line in batch if isinstance(line, dict)]
             try:
                 if lines:
                     await asyncio.to_thread(self._write_batch, lines)
@@ -229,8 +243,6 @@ class PluginLog:
                 name, completed = last
                 try:
                     await asyncio.to_thread((self.directory / name).write_bytes, b"")
-                    if name == "runtime.log":
-                        self.records.clear()
                 except OSError as exc:
                     completed.set_exception(exc)
                 else:
@@ -241,12 +253,35 @@ class PluginLog:
                 self.queue.task_done()
                 return
 
-    def _write_batch(self, lines: list[str]):
-        if self.debug_mode:
-            with (self.directory / "dev.log").open("ab") as stream:
-                stream.write("".join(line + "\r\n" for line in lines).encode("utf-8"))
-        else:
-            self.records.extend(lines)
-            (self.directory / "runtime.log").write_bytes(
-                "".join(line + "\r\n" for line in self.records).encode("utf-8")
+    def _write_batch(self, lines: list[dict[str, str]]):
+        for name, limit in self.limits.items():
+            records = [
+                (line[name] + "\r\n").encode("utf-8") for line in lines if name in line
+            ]
+            # A single oversized JSON record cannot fit as a complete line.
+            data = b"".join(
+                record for record in records if not limit or len(record) <= limit
             )
+            if data:
+                with (self.directory / name).open("ab") as stream:
+                    stream.write(data)
+                self._trim_file(name)
+
+    def _trim_file(self, name: str):
+        """Keep the newest complete lines within the file's byte budget.
+
+        Args:
+            name: One of the two fixed plugin log filenames.
+        """
+        limit = self.limits[name]
+        path = self.directory / name
+        size = path.stat().st_size
+        if not limit or size <= limit:
+            return
+        with path.open("rb") as stream:
+            stream.seek(size - limit - 1)
+            boundary = stream.read(1) == b"\n"
+            data = stream.read()
+        if not boundary:
+            data = data.partition(b"\n")[2]
+        path.write_bytes(data)

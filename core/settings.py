@@ -1,6 +1,7 @@
 """Validated configuration and local-time participation policy."""
 
 import json
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -45,11 +46,15 @@ class Settings:
         self.controller = config["controller"]
         self.proactive = config["proactive"]
         self.prompts = config["prompts"]
-        if (
-            not isinstance(self.logging["runtime_lines"], int)
-            or self.logging["runtime_lines"] < 1
-        ):
-            raise ValueError("Runtime log window must be a positive integer")
+        for key in ("runtime_max_mb", "dev_max_mb"):
+            limit = self.logging[key]
+            if (
+                isinstance(limit, bool)
+                or not isinstance(limit, (int, float))
+                or not math.isfinite(limit)
+                or limit < 0
+            ):
+                raise ValueError("Log size limits must be finite non-negative numbers")
         self.timezone = ZoneInfo(self.controller["timezone"])
         self.periods = [
             ActivityPeriod(
@@ -107,8 +112,14 @@ class Settings:
             for prefix in self.recorder["command_prefixes"]
         )
 
-    def is_command_record(self, row: dict) -> bool:
-        if not self.recorder["filter_commands"] or row["direction"] != "in":
+    def is_command_record(self, row: dict, for_llm: bool = False) -> bool:
+        if (
+            not (
+                self.recorder["filter_commands"]
+                or (for_llm and self.recorder["filter_llm_commands"])
+            )
+            or row["direction"] != "in"
+        ):
             return False
         text = "".join(
             part["text"]

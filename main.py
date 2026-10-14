@@ -100,6 +100,15 @@ class Humanization(Star):
     async def inject(self, event, request):
         await self.runtime.inject(event, request)
 
+    @filter.on_agent_begin(priority=-10000)
+    async def filter_agent_history(self, event, run_context):
+        self.runtime.adapter.filter_agent_history(event, run_context)
+
+    @filter.on_agent_done(priority=-10000)
+    async def restore_agent_history(self, event, run_context, response):
+        self.runtime.adapter.record_main_usage(event)
+        self.runtime.adapter.restore_agent_history(event, run_context)
+
     @filter.on_llm_response(priority=-10000)
     async def validate(self, event, response):
         await self.runtime.validate(event, response)
@@ -116,6 +125,7 @@ class Humanization(Star):
     async def tool_started(self, event, tool, tool_args):
         turn = event.get_extra("humanization_turn")
         if turn:
+            self.runtime.adapter.record_main_usage(event)
             self.runtime.log.debug(
                 "tool.start", tool=tool.name, arguments=tool_args, run=turn["run"]
             )

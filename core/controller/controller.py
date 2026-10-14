@@ -60,16 +60,19 @@ class Controller:
         context = await self.prompts.context(message.scope)
         payload = json.dumps(
             {
+                "context": json.loads(context),
                 "trigger": "idle" if idle else "message",
                 "target": message.message_id,
                 "activity": probability,
-                "context": context,
             },
             ensure_ascii=False,
+            separators=(",", ":"),
         )
         try:
             async with asyncio.timeout(cfg["gate_timeout"]):
-                raw = await self.generate(provider, system, payload)
+                raw = await self.generate(
+                    provider, system, payload, purpose="controller"
+                )
             raw = raw.strip()
             if raw.startswith("```") and raw.endswith("```"):
                 raw = "\n".join(raw.splitlines()[1:-1])

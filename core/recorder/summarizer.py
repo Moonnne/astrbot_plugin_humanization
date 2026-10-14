@@ -85,7 +85,7 @@ class Summarizer:
                 item["text"] = (
                     item["text"][: config["context_chars"] // 2] + "[内容截断]"
                 )
-            cost = len(json.dumps(item, ensure_ascii=False))
+            cost = len(json.dumps(item, ensure_ascii=False, separators=(",", ":")))
             if selected and size + cost > config["context_chars"]:
                 break
             selected.append(item)
@@ -130,16 +130,16 @@ class Summarizer:
                         "text",
                     )
                 }
-                cost = len(json.dumps(item, ensure_ascii=False))
+                cost = len(json.dumps(item, ensure_ascii=False, separators=(",", ":")))
                 if size + cost > config["context_chars"]:
                     break
                 overlap.append(item)
                 size += cost
         payload = {
             "date": day,
+            "messages": list(reversed(overlap)) + selected,
+            "already_summarized_through_seq": session["cursor"],
             "existing_diaries": diaries,
-            "messages": selected,
-            "overlap_for_context_only": list(reversed(overlap)),
             "coverage_gap": gap,
             "instruction": "合并为今日完整日记；旧日期消息作为补记，历史日记仅供参考。",
         }
@@ -150,7 +150,8 @@ class Summarizer:
             body = await self.generate(
                 config["summary_provider"],
                 self.prompt,
-                json.dumps(payload, ensure_ascii=False),
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                purpose="recorder",
             )
         body = body.strip()
         if not body:

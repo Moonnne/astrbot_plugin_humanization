@@ -11,7 +11,7 @@ from test_host_contract import Event, consume
 from test_host_contract import plugin as plugin
 
 from astrbot.api.message_components import File, Image, Plain, Reply, Video
-from astrbot.core.agent.message import TextPart
+from astrbot.core.agent.message import TextPart, bind_checkpoint_messages
 from astrbot.core.message.message_event_result import ResultContentType
 from astrbot.core.pipeline.context_utils import call_handler
 from astrbot.core.pipeline.process_stage.stage import ProcessStage
@@ -85,6 +85,7 @@ async def test_native_command_history_and_quote_are_filtered_without_changing_st
     plugin,
 ):
     plugin.settings.recorder["command_prefixes"] = ["/", "!"]
+    plugin.settings.recorder["filter_llm_commands"] = True
     history = [
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "normal reply"},
@@ -110,13 +111,28 @@ async def test_native_command_history_and_quote_are_filtered_without_changing_st
         TextPart(text="<Quoted Message>\n/status secret"),
         TextPart(text="other context"),
     ]
-    plugin.adapter.filter_command_history(event, request)
-    assert request.contexts == history[:2] + history[-1:]
+    plugin.adapter.filter_command_quote(event, request)
+    assert request.contexts == history
     assert [part.text for part in request.extra_user_content_parts] == ["other context"]
+    event.set_extra("humanization_turn", {"phase": "agent"})
+    run_context = SimpleNamespace(messages=bind_checkpoint_messages(request.contexts))
+    plugin.adapter.filter_agent_history(event, run_context)
+    assert [message.role for message in run_context.messages] == [
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert "private" not in str(run_context.messages)
+    plugin.adapter.restore_agent_history(event, run_context)
+    assert [message.model_dump(exclude_none=True) for message in run_context.messages][
+        0
+    ]["content"] == "hello"
+    assert len(run_context.messages) == len(history)
+    assert "command_history" not in event.get_extra("humanization_turn")
     assert stored == json.dumps(history)
-    plugin.settings.recorder["filter_commands"] = False
+    plugin.settings.recorder["filter_llm_commands"] = False
     request.contexts = json.loads(stored)
-    plugin.adapter.filter_command_history(event, request)
+    plugin.adapter.filter_command_quote(event, request)
     assert request.contexts == history
 
 
@@ -278,7 +294,7 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
     config["prompts"]["behavior"] = ""
     config["prompts"]["group"] = "  "
     config["prompts"]["expression"] = "Existing custom expression"
-    config["logging"]["runtime_lines"] = 3
+    config["logging"]["runtime_max_mb"] = 3
     config.save_config()
     database = SimpleNamespace(
         get_umo_aliases=AsyncMock(
@@ -312,7 +328,7 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
             )
         assert saved["prompts"]["expression"] == "Existing custom expression"
         assert set(instance.runtime.prompts.text) == {"gate", "summary", "output"}
-        assert instance.runtime.log.records.maxlen == 3
+        assert instance.runtime.log.limits["runtime.log"] == 3 * 1024**2
     finally:
         await instance.terminate()
     assert all(task.done() for task in instance.runtime.tasks)

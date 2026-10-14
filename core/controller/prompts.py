@@ -43,14 +43,16 @@ class Prompts:
             ]
         )
 
-    async def context(self, scope: str, exclude_id: str = "") -> str:
+    async def context(
+        self, scope: str, exclude_id: str = "", for_llm: bool = False
+    ) -> str:
         rows = await self.storage.recent(
             scope, self.settings.controller["context_messages"]
         )
         messages = []
         remaining = self.settings.recorder["context_chars"]
         for row in reversed(rows):
-            if self.settings.is_command_record(row):
+            if self.settings.is_command_record(row, for_llm=for_llm):
                 continue
             if (
                 exclude_id
@@ -60,11 +62,20 @@ class Prompts:
                 continue
             item = {
                 k: row[k]
-                for k in ("sender_id", "sender_name", "sent_at", "direction", "text")
+                for k in (
+                    "message_id",
+                    "sender_id",
+                    "sender_name",
+                    "sent_at",
+                    "direction",
+                    "text",
+                )
             }
             item["text"] = item["text"][:remaining]
             messages.append(item)
-            remaining -= len(json.dumps(item, ensure_ascii=False))
+            remaining -= len(
+                json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+            )
             if remaining <= 0:
                 break
         return json.dumps(
@@ -74,4 +85,5 @@ class Prompts:
                 "messages": list(reversed(messages)),
             },
             ensure_ascii=False,
+            separators=(",", ":"),
         )

@@ -46,6 +46,12 @@
         "default": true,
         "hint": "已匹配的插件指令和指定指令前缀不入库，不计入摘要触发。命令插件正常执行。"
       },
+      "filter_llm_commands": {
+        "type": "bool",
+        "description": "过滤LLM指令消息与回复",
+        "default": false,
+        "hint": "仅控制 Humanization 接管的主模型输入。开启后过滤仍可按额外指令前缀识别的原生历史指令回合及指令引用，保存时保留原生指令记录；关闭时主模型可读取原生指令历史。与上方 Recorder 入库过滤独立；不会重写已有日记。"
+      },
       "command_prefixes": {
         "type": "list",
         "description": "额外指令前缀",
@@ -371,13 +377,19 @@
         "type": "bool",
         "description": "启用调试模式",
         "default": false,
-        "hint": "普通模式：核心日志输出到 AstrBot 控制台及 runtime.log，保留最新 N 行\n调试模式：详细日志仅追加到 dev.log，不轮转。调试日志包含聊天及模型内容，已知凭据字段及常见密钥格式会脱敏。只控制本插件日志，保存重载后生效。"
+        "hint": "普通模式：核心日志输出到 AstrBot 控制台及 runtime.log。调试模式：详细日志写入 dev.log，不向控制台输出。模型用量与缓存摘要在两种模式下均写入 runtime.log，不回显控制台。两份文件按下方容量保留最新完整日志行。调试日志包含聊天及模型内容，已知凭据字段及常见密钥格式会脱敏。保存重载后生效。"
       },
-      "runtime_lines": {
-        "type": "int",
-        "description": "日志滚动窗口（行）",
-        "default": 1000,
-        "hint": "普通模式下 runtime.log 保留的最新行数，须为正整数。保存重载后生效，缩小窗口会截去较早日志；dev.log 不受此影响。"
+      "runtime_max_mb": {
+        "type": "float",
+        "description": "runtime.log 大小上限（MB）",
+        "default": 5,
+        "hint": "按 UTF-8 文件实际字节数滚动，1 MB = 1024 × 1024 字节。0 表示无限制，支持小数，不允许负数。保存重载后生效；超过容量时丢弃最早的完整日志行。"
+      },
+      "dev_max_mb": {
+        "type": "float",
+        "description": "dev.log 大小上限（MB）",
+        "default": 10,
+        "hint": "调试日志的存储容量，单位与 runtime.log 相同。0 表示无限制，支持小数，不允许负数。保存重载后生效，包括裁剪已有日志；增大上限不会恢复已丢弃的记录。"
       }
     }
   }
