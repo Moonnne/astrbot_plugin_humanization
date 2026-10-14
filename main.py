@@ -7,6 +7,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools
 
 from .core.astrbot_adapter import ScopeFilter
+from .core.management import ManagementAccessFilter, ManagementMessageFilter
 from .core.runtime import Runtime
 
 
@@ -43,6 +44,45 @@ class Humanization(Star):
         item["options"] = list(choices)
         item["labels"] = list(choices.values())
         self.runtime.log.debug("scope.options.updated", option_count=len(choices))
+
+    @filter.custom_filter(ManagementMessageFilter, priority=20000)
+    async def management_guard(self, event: AstrMessageEvent):
+        event.should_call_llm(True)
+        event.set_extra("humanization_management", True)
+        if not self.runtime.admin.allowed(event):
+            event.stop_event()
+
+    @filter.custom_filter(ManagementAccessFilter)
+    @filter.command_group("hum")
+    def hum(self):
+        """Humanization administration."""
+
+    @hum.custom_filter(ManagementAccessFilter)
+    @hum.command("clear", alias={"claer"})
+    @filter.permission_type(filter.PermissionType.ADMIN, raise_error=False)
+    async def clear_log(self, event: AstrMessageEvent, target: str = ""):
+        text = await self.runtime.admin.clear_log(event, target)
+        if text:
+            yield event.plain_result(text)
+        event.stop_event()
+
+    @hum.custom_filter(ManagementAccessFilter)
+    @hum.command("reset_data")
+    @filter.permission_type(filter.PermissionType.ADMIN, raise_error=False)
+    async def reset_data(self, event: AstrMessageEvent, mode: str = ""):
+        text = await self.runtime.admin.request_reset(event, mode)
+        if text:
+            yield event.plain_result(text)
+        event.stop_event()
+
+    @hum.custom_filter(ManagementAccessFilter)
+    @hum.command("IClearKnowWhatIDoingNow")
+    @filter.permission_type(filter.PermissionType.ADMIN, raise_error=False)
+    async def confirm_reset(self, event: AstrMessageEvent):
+        text = await self.runtime.admin.confirm(event)
+        if text:
+            yield event.plain_result(text)
+        event.stop_event()
 
     @filter.custom_filter(ScopeFilter, priority=10000)
     async def observe(self, event: AstrMessageEvent):

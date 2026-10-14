@@ -1,5 +1,6 @@
 """Validated configuration and local-time participation policy."""
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -39,6 +40,7 @@ class Settings:
     def __init__(self, config: dict):
         self.scope = config["scope"]
         self.logging = config["logging"]
+        self.management = config["management"]
         self.recorder = config["recorder"]
         self.controller = config["controller"]
         self.proactive = config["proactive"]
@@ -98,6 +100,22 @@ class Settings:
     def selected(self, umo: str, group_umo: str) -> bool:
         selected = self.scope["sessions"] + self.scope["manual_sessions"]
         return self.scope["all_sessions"] or umo in selected or group_umo in selected
+
+    def is_command_text(self, text: str) -> bool:
+        return any(
+            prefix and text.lstrip().startswith(prefix)
+            for prefix in self.recorder["command_prefixes"]
+        )
+
+    def is_command_record(self, row: dict) -> bool:
+        if not self.recorder["filter_commands"] or row["direction"] != "in":
+            return False
+        text = "".join(
+            part["text"]
+            for part in json.loads(row["segments"])
+            if part["type"] == "text"
+        )
+        return self.is_command_text(text)
 
     def activity(self, private: bool, now: datetime) -> float:
         local = now.astimezone(self.timezone)

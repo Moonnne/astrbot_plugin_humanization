@@ -50,6 +50,8 @@ class Prompts:
         messages = []
         remaining = self.settings.recorder["context_chars"]
         for row in reversed(rows):
+            if self.settings.is_command_record(row):
+                continue
             if (
                 exclude_id
                 and row["direction"] == "in"

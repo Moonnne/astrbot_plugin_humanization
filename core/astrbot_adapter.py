@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.message_components import At, Plain
+from astrbot.api.message_components import At, Plain, Reply
 from astrbot.core.agent.message import TextPart
 from astrbot.core.astr_main_agent import MainAgentBuildConfig, collect_initial_request
 from astrbot.core.platform.astrbot_message import AstrBotMessage, MessageMember
@@ -142,11 +142,56 @@ class AstrBotAdapter:
         raw = "".join(
             p.text for p in event.get_messages() if isinstance(p, Plain)
         ).lstrip()
-        return any(
-            raw.startswith(prefix)
-            for prefix in self.settings.recorder["command_prefixes"]
-            if prefix
-        )
+        return self.settings.is_command_text(raw)
+
+    def filter_command_history(self, event, request):
+        """Remove identifiable command inputs from this plugin's model request.
+
+        Args:
+            event: Incoming non-command event supplying any quoted message.
+            request: Native request whose resulting history is saved by AstrBot.
+        """
+        if not self.settings.recorder["filter_commands"]:
+            return
+        retained = []
+        excluded = False
+        for item in request.contexts:
+            if item["role"] == "user":
+                content = item.get("content") or ""
+                text = (
+                    content
+                    if isinstance(content, str)
+                    else "\n".join(
+                        part.get("text", "")
+                        for part in content
+                        if part.get("type") == "text"
+                    )
+                )
+                excluded = self.settings.is_command_text(text)
+            if not excluded:
+                retained.append(item)
+        removed = len(request.contexts) - len(retained)
+        request.contexts = retained
+        for part in event.get_messages():
+            if not isinstance(part, Reply):
+                continue
+            quoted = (
+                "".join(
+                    entry.text for entry in part.chain or () if isinstance(entry, Plain)
+                )
+                or part.message_str
+                or ""
+            )
+            if self.settings.is_command_text(quoted):
+                request.extra_user_content_parts = [
+                    entry
+                    for entry in request.extra_user_content_parts
+                    if not (
+                        isinstance(entry, TextPart)
+                        and entry.text.startswith("<Quoted Message>\n")
+                    )
+                ]
+        self.log.debug("context.commands.filtered", removed_history_items=removed)
 
     async def can_reply(self, event) -> bool:
         if isinstance(event, IdleEvent):

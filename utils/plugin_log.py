@@ -174,6 +174,25 @@ class PluginLog:
         if self.worker is not None:
             await self.queue.join()
 
+    async def clear(self, name: str):
+        """Truncate one log in queue order, after all earlier writes finish.
+
+        Args:
+            name: Either runtime.log or dev.log.
+
+        Raises:
+            ValueError: The requested file is not a plugin log.
+            RuntimeError: The writer has already closed.
+            OSError: The selected log cannot be truncated.
+        """
+        if name not in ("runtime.log", "dev.log"):
+            raise ValueError("Unknown plugin log")
+        if self.closed:
+            raise RuntimeError("Plugin log writer is closed")
+        completed = asyncio.get_running_loop().create_future()
+        self.queue.put_nowait((name, completed))
+        await asyncio.shield(completed)
+
     async def close(self):
         self.closed = True
         if self.worker is not None:
@@ -186,9 +205,13 @@ class PluginLog:
         while True:
             first = await self.queue.get()
             batch = [first]
-            while len(batch) < 128 and not self.queue.empty():
+            while (
+                isinstance(batch[-1], str)
+                and len(batch) < 128
+                and not self.queue.empty()
+            ):
                 batch.append(self.queue.get_nowait())
-            lines = [line for line in batch if line is not None]
+            lines = [line for line in batch if isinstance(line, str)]
             try:
                 if lines:
                     await asyncio.to_thread(self._write_batch, lines)
@@ -199,9 +222,23 @@ class PluginLog:
                     )
                     self.io_reported = True
             finally:
-                for _ in batch:
+                for _ in lines:
                     self.queue.task_done()
-            if None in batch:
+            last = batch[-1]
+            if isinstance(last, tuple):
+                name, completed = last
+                try:
+                    await asyncio.to_thread((self.directory / name).write_bytes, b"")
+                    if name == "runtime.log":
+                        self.records.clear()
+                except OSError as exc:
+                    completed.set_exception(exc)
+                else:
+                    completed.set_result(None)
+                finally:
+                    self.queue.task_done()
+            elif last is None:
+                self.queue.task_done()
                 return
 
     def _write_batch(self, lines: list[str]):

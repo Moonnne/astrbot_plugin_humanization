@@ -7,14 +7,14 @@
         "type": "bool",
         "description": "全部会话",
         "default": false,
-        "hint": "启用后观察所有 OneBot 会话；Controller 开启时同时抑制默认 LLM 并代理回复。"
+        "hint": "启用后将自动监听所有 OneBot 会话；Controller 开启时同时抑制默认 LLM 并代理回复。"
       },
       "sessions": {
         "type": "list",
         "description": "选择已知会话",
         "default": [],
         "options": [],
-        "hint": "从宿主已知会话中多选。启动／重载时刷新列表。未选择任何范围时不接管。",
+        "hint": "从宿主已知会话中多选。启动／重载时刷新列表。\n未选择任何范围时不接管任何会话。",
         "condition": {
           "all_sessions": false
         }
@@ -23,7 +23,7 @@
         "type": "list",
         "description": "补充会话 UMO",
         "default": [],
-        "hint": "尚未出现在选择框中的会话可手动添加，用 /sid 获取 UMO。整个群填写 平台实例:GroupMessage:群号；群内成员隔离时也使用此格式选择整个群。",
+        "hint": "未出现在选择框中的会话可手动添加，用 /sid 获取 UMO。\n整个群填写 平台实例:GroupMessage:群号；群内成员隔离时也使用此格式选择整个群。",
         "condition": {
           "all_sessions": false
         }
@@ -38,7 +38,7 @@
         "type": "bool",
         "description": "启用 Recorder",
         "default": true,
-        "hint": "关闭后也停止 Controller 接管，恢复宿主默认回复。"
+        "hint": "关闭后也会停止 Controller 接管，恢复Astrbot默认回复。"
       },
       "filter_commands": {
         "type": "bool",
@@ -66,7 +66,7 @@
       },
       "summary_every": {
         "type": "int",
-        "description": "新增多少条真人消息后触发摘要",
+        "description": "新增多少条用户消息后触发摘要",
         "default": 50,
         "hint": "须满足 触发条数 ≤ 摘要窗口 ≤ 保留条数。积压时从未处理范围开始追赶。"
       },
@@ -299,7 +299,7 @@
   },
   "prompts": {
     "type": "object",
-    "description": "分层提示词（主人格仍使用 AstrBot 当前人格）",
+    "description": "分层提示词（主人格仍使用 AstrBot 配置文件中激活的人格）",
     "items": {
       "behavior_persona": {
         "type": "string",
@@ -351,6 +351,18 @@
       }
     }
   },
+  "management": {
+    "type": "object",
+    "description": "管理指令",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "启用 /hum 管理指令",
+        "default": false,
+        "hint": "仅 AstrBot 管理员可用，其他用户静默。日志清空仅限私聊；当前会话数据重置需本人在同一会话60秒内确认。保存重载后生效。"
+      }
+    }
+  },
   "logging": {
     "type": "object",
     "description": "日志设置",
@@ -359,13 +371,13 @@
         "type": "bool",
         "description": "启用调试模式",
         "default": false,
-        "hint": "普通模式：核心日志输出到 AstrBot 控制台及 runtime.log，保留最新 N 行；调试模式：详细日志仅追加到 dev.log，不轮转。调试日志包含聊天及模型内容，已知凭据字段及常见密钥格式会脱敏。只控制本插件日志，保存重载后生效。"
+        "hint": "普通模式：核心日志输出到 AstrBot 控制台及 runtime.log，保留最新 N 行\n调试模式：详细日志仅追加到 dev.log，不轮转。调试日志包含聊天及模型内容，已知凭据字段及常见密钥格式会脱敏。只控制本插件日志，保存重载后生效。"
       },
       "runtime_lines": {
         "type": "int",
         "description": "日志滚动窗口（行）",
         "default": 1000,
-        "hint": "普通模式下 runtime.log 保留的最新行数，须为正整数。保存重载后生效，缩小窗口会截去较早日志；dev.log 仍不滚动。"
+        "hint": "普通模式下 runtime.log 保留的最新行数，须为正整数。保存重载后生效，缩小窗口会截去较早日志；dev.log 不受此影响。"
       }
     }
   }

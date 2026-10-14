@@ -212,6 +212,8 @@ class Storage:
 
     async def update_session(self, scope: str, **values):
         allowed = {
+            "cursor",
+            "summarized_count",
             "last_human",
             "last_reply",
             "next_idle",
@@ -282,3 +284,29 @@ class Storage:
                 (status, sent, detail, run),
             )
             await self.db.commit()
+
+    async def reset(self, scope: str, day: str | None = None):
+        """Reset one conversation, optionally retaining earlier diaries.
+
+        Args:
+            scope: Plugin conversation identity; never a global database reset.
+            day: Diary date to remove, or None to remove all its diaries.
+        """
+        async with self.lock:
+            try:
+                await self.db.execute("DELETE FROM messages WHERE scope=?", (scope,))
+                await self.db.execute("DELETE FROM reply_runs WHERE scope=?", (scope,))
+                if day is None:
+                    await self.db.execute(
+                        "DELETE FROM daily_summaries WHERE scope=?", (scope,)
+                    )
+                else:
+                    await self.db.execute(
+                        "DELETE FROM daily_summaries WHERE scope=? AND day=?",
+                        (scope, day),
+                    )
+                await self.db.execute("DELETE FROM sessions WHERE scope=?", (scope,))
+                await self.db.commit()
+            except BaseException:
+                await self.db.rollback()
+                raise

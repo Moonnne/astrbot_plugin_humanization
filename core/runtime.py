@@ -19,6 +19,7 @@ from .astrbot_adapter import AstrBotAdapter, IdleEvent, ScopeFilter
 from .controller.controller import Controller
 from .controller.delivery import Delivery, ReplayResult
 from .controller.prompts import Prompts
+from .management import Management, ManagementAccessFilter
 from .recorder.storage import Storage
 from .recorder.summarizer import Summarizer
 from .settings import Settings
@@ -40,6 +41,10 @@ class Runtime:
         self.generation = uuid.uuid4().hex
         self.tasks = set()
         self.active = set()
+        self.active_scopes = {}
+        self.record_locks = {}
+        self.reset_since = {}
+        self.summary_task = None
         self.closed = False
         self.storage = Storage(
             data_dir / "chat" / "db" / "chat.sqlite3",
@@ -58,6 +63,7 @@ class Runtime:
             self.prompts.text["summary"],
             self.log,
         )
+        self.admin = Management(self)
 
     async def initialize(self):
         await self.log.open()
@@ -84,10 +90,12 @@ class Runtime:
             await self.log.close()
             raise
         ScopeFilter.settings = self.settings
+        ManagementAccessFilter.settings = self.settings
         if self.settings.recorder["enabled"]:
-            self.tasks.add(
-                asyncio.create_task(self.summary_loop(), name="humanization-summary")
+            self.summary_task = asyncio.create_task(
+                self.summary_loop(), name="humanization-summary"
             )
+            self.tasks.add(self.summary_task)
             if (
                 self.settings.controller["enabled"]
                 and self.settings.proactive["enabled"]
@@ -97,7 +105,7 @@ class Runtime:
                 )
 
     async def observe(self, event: AstrMessageEvent):
-        if self.closed:
+        if self.closed or event.get_extra("humanization_management"):
             return
         idle = event.get_extra("humanization_idle")
         if idle:
@@ -112,40 +120,44 @@ class Runtime:
             return
         if str(event.get_self_id()) == str(event.get_sender_id()):
             return
-        command = self.adapter.is_command(event)
-        self.log.debug(
-            "message.inspect",
-            command=command,
-            umo=event.unified_msg_origin,
-            text=event.message_str,
-        )
-        event.set_extra("humanization_command", command)
-        if (
-            not command
-            and self.settings.controller["enabled"]
-            and await self.adapter.can_reply(event)
-        ):
-            event.should_call_llm(True)
-            event.set_extra("humanization_claimed", True)
-            self.log.debug("message.claimed", default_llm_suppressed=True)
-        if command and self.settings.recorder["filter_commands"]:
-            message = self.adapter.snapshot(event)
-            await self.storage.update_session(
-                message.scope, last_human=message.received_at, idle_waiting=0
-            )
-            self.log.debug("message.filtered", reason="command")
-            return
-        message = self.adapter.snapshot(event)
-        if await self.storage.append(message):
-            event.set_extra("humanization_message", message)
+        scope = self.adapter.snapshot(event).scope
+        async with self.record_locks.setdefault(scope, asyncio.Lock()):
+            command = self.adapter.is_command(event)
             self.log.debug(
-                "message.recorded",
-                message_id=message.message_id,
-                scope=message.scope,
-                text=message.text,
+                "message.inspect",
+                command=command,
+                umo=event.unified_msg_origin,
+                text=event.message_str,
             )
-        else:
-            self.log.debug("message.filtered", reason="duplicate")
+            event.set_extra("humanization_command", command)
+            if (
+                not command
+                and self.settings.controller["enabled"]
+                and await self.adapter.can_reply(event)
+            ):
+                event.should_call_llm(True)
+                event.set_extra("humanization_claimed", True)
+                self.log.debug("message.claimed", default_llm_suppressed=True)
+            if command and self.settings.recorder["filter_commands"]:
+                # Command handlers still run; unmatched prefixes must not fall through to LLM.
+                event.should_call_llm(True)
+                message = self.adapter.snapshot(event)
+                await self.storage.update_session(
+                    message.scope, last_human=message.received_at, idle_waiting=0
+                )
+                self.log.debug("message.filtered", reason="command")
+                return
+            message = self.adapter.snapshot(event)
+            if await self.storage.append(message):
+                event.set_extra("humanization_message", message)
+                self.log.debug(
+                    "message.recorded",
+                    message_id=message.message_id,
+                    scope=message.scope,
+                    text=message.text,
+                )
+            else:
+                self.log.debug("message.filtered", reason="duplicate")
 
     async def participate(self, event: AstrMessageEvent):
         if self.closed or not event.get_extra("humanization_claimed"):
@@ -173,8 +185,14 @@ class Runtime:
         )
         if message is None:
             return
+        reset_at = self.reset_since.get(message.scope, 0)
+        if message.received_at < reset_at or (
+            idle and event.get_extra("humanization_idle")["last_human"] < reset_at
+        ):
+            return
         task = asyncio.current_task()
         self.active.add(task)
+        self.active_scopes.setdefault(message.scope, set()).add(task)
         run = None
         turn = None
         previous_streaming = event.get_extra("enable_streaming")
@@ -300,12 +318,17 @@ class Runtime:
                 event.set_extra("enable_streaming", previous_streaming)
                 self.log.debug("reply.cache.cleared", run=run)
             self.active.discard(task)
+            scope_tasks = self.active_scopes[message.scope]
+            scope_tasks.discard(task)
+            if not scope_tasks:
+                self.active_scopes.pop(message.scope)
 
     async def inject(self, event, request):
         turn = event.get_extra("humanization_turn")
         if not turn:
             return
         message = turn["message"]
+        self.adapter.filter_command_history(event, request)
         request.system_prompt += "\n\n" + await self.prompts.reply(message.private)
         context = await self.prompts.context(message.scope, message.message_id)
         self.log.info("context.prepare", run=turn["run"], context_chars=len(context))
@@ -458,6 +481,8 @@ class Runtime:
                 for session in await self.storage.rows(
                     "SELECT * FROM sessions WHERE private=0"
                 ):
+                    if session["scope"] in self.summarizer.resetting:
+                        continue
                     group_umo = (
                         f"{session['platform']}:GroupMessage:{session['group_id']}"
                     )
@@ -492,10 +517,79 @@ class Runtime:
             except Exception:
                 self.log.exception("idle.worker.failed")
 
+    async def reset_scope(self, message, day: str | None):
+        """Stop old work and reset one plugin scope and its native routes.
+
+        Args:
+            message: Original management event snapshot defining the target scope.
+            day: Diary date to delete, or None to delete every diary in this scope.
+        """
+        scope = message.scope
+        async with self.record_locks.setdefault(scope, asyncio.Lock()):
+            self.reset_since[scope] = time.time()
+            self.summarizer.resetting.add(scope)
+            restart_summary = self.summarizer.active_scope == scope
+            try:
+                active = list(self.active_scopes.get(scope, ()))
+                for task in active:
+                    task.cancel()
+                await asyncio.gather(*active, return_exceptions=True)
+                if restart_summary:
+                    self.summary_task.cancel()
+                    await asyncio.gather(self.summary_task, return_exceptions=True)
+                    self.tasks.discard(self.summary_task)
+                async with self.summarizer.lock, self.controller.lock(scope):
+                    manager = self.context.conversation_manager
+                    routes = {message.umo}
+                    if not message.private:
+                        prefix = f"{message.platform}:GroupMessage:"
+                        routes.add(prefix + message.group_id)
+                        for conversation in await manager.get_conversations(
+                            platform_id=message.platform
+                        ):
+                            route = conversation.user_id
+                            if route.startswith(prefix) and (
+                                route == prefix + message.group_id
+                                or route[len(prefix) :].endswith("_" + message.group_id)
+                            ):
+                                routes.add(route)
+                    for route in sorted(routes):
+                        current = await manager.get_curr_conversation_id(route)
+                        conversation = (
+                            await manager.get_conversation(route, current)
+                            if current
+                            else None
+                        )
+                        await manager.new_conversation(
+                            route,
+                            platform_id=message.platform,
+                            persona_id=conversation.persona_id
+                            if conversation
+                            else None,
+                        )
+                    await self.storage.reset(scope, day)
+                self.controller.locks.pop(scope, None)
+                self.log.info(
+                    "admin.reset.complete",
+                    conversation=self.log.identity(scope),
+                    diary_date=day,
+                    native_routes=len(routes),
+                )
+            finally:
+                self.summarizer.resetting.discard(scope)
+                if restart_summary and not self.closed:
+                    self.summary_task = asyncio.create_task(
+                        self.summary_loop(), name="humanization-summary"
+                    )
+                    self.tasks.add(self.summary_task)
+
     async def terminate(self):
         self.closed = True
+        self.admin.close()
         if ScopeFilter.settings is self.settings:
             ScopeFilter.settings = None
+        if ManagementAccessFilter.settings is self.settings:
+            ManagementAccessFilter.settings = None
         tasks = self.tasks | self.active
         for task in tasks:
             task.cancel()

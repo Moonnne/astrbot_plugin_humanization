@@ -13,6 +13,8 @@ class Summarizer:
         self.prompt = prompt
         self.log = log
         self.lock = asyncio.Lock()
+        self.active_scope = None
+        self.resetting = set()
 
     async def tick(self):
         today = datetime.now(self.settings.timezone).date().isoformat()
@@ -23,6 +25,8 @@ class Summarizer:
             for session in await self.storage.rows(
                 "SELECT * FROM sessions WHERE last_seq>cursor"
             ):
+                if session["scope"] in self.resetting:
+                    continue
                 group_umo = f"{session['platform']}:GroupMessage:{session['group_id']}"
                 if not self.settings.selected(session["umo"], group_umo):
                     continue
@@ -43,10 +47,13 @@ class Summarizer:
                 ):
                     continue
                 async with self.log.context("summary"):
+                    self.active_scope = session["scope"]
                     try:
                         await self.summarize(session, pending)
                     except Exception:
                         self.log.exception("summary.failed", cursor=session["cursor"])
+                    finally:
+                        self.active_scope = None
 
     async def summarize(self, session: dict, pending: list[dict]):
         """Advance only over the rows actually included in the model request.
@@ -56,15 +63,11 @@ class Summarizer:
             pending: Earliest retained messages after the cursor.
         """
         config = self.settings.recorder
-        self.log.info(
-            "summary.start",
-            conversation=self.log.identity(session["scope"]),
-            pending_count=len(pending),
-            cursor=session["cursor"],
-        )
         selected = []
         size = 0
         for row in pending:
+            if self.settings.is_command_record(row):
+                continue
             item = {
                 key: row[key]
                 for key in (
@@ -87,6 +90,20 @@ class Summarizer:
                 break
             selected.append(item)
             size += cost
+        if not selected:
+            await self.storage.update_session(
+                session["scope"],
+                cursor=pending[-1]["seq"],
+                summarized_count=pending[-1]["human_count"],
+            )
+            self.log.debug("summary.commands.skipped", through_seq=pending[-1]["seq"])
+            return
+        self.log.info(
+            "summary.start",
+            conversation=self.log.identity(session["scope"]),
+            pending_count=len(selected),
+            cursor=session["cursor"],
+        )
         now = datetime.now(self.settings.timezone)
         day = now.date().isoformat()
         diaries = await self.storage.diaries(session["scope"])
@@ -99,6 +116,8 @@ class Summarizer:
                 (session["scope"], session["cursor"], config["window"] - len(selected)),
             )
             for row in preceding:
+                if self.settings.is_command_record(row):
+                    continue
                 item = {
                     key: row[key]
                     for key in (
@@ -144,6 +163,12 @@ class Summarizer:
         if gap:
             body = "[覆盖缺口：部分原始消息已滚动淘汰]\n" + body
         through = selected[-1]["seq"]
+        for row in pending:
+            if row["seq"] <= through:
+                continue
+            if not self.settings.is_command_record(row):
+                break
+            through = row["seq"]
         count = next(row["human_count"] for row in pending if row["seq"] == through)
         await self.storage.commit_summary(
             session["scope"], day, body, through, count, now.timestamp()

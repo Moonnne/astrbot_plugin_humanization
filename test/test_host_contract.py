@@ -114,12 +114,14 @@ async def test_command_filter_is_default_and_does_not_claim(plugin):
         "activated_handlers", [SimpleNamespace(event_filters=[CommandFilter("status")])]
     )
     await consume(plugin.observe(event))
-    assert not event.call_llm
+    assert event.call_llm
     assert not await plugin.storage.rows("SELECT * FROM messages")
 
 
 async def test_unregistered_slash_command_is_filtered(plugin):
-    await consume(plugin.observe(Event("/unknown")))
+    event = Event("/unknown")
+    await consume(plugin.observe(event))
+    assert event.call_llm
     assert not await plugin.storage.rows("SELECT * FROM messages")
 
 

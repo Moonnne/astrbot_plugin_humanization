@@ -10,7 +10,8 @@ from humanization_test.core.astrbot_adapter import IdleEvent
 from test_host_contract import Event, consume
 from test_host_contract import plugin as plugin
 
-from astrbot.api.message_components import File, Image, Plain, Video
+from astrbot.api.message_components import File, Image, Plain, Reply, Video
+from astrbot.core.agent.message import TextPart
 from astrbot.core.message.message_event_result import ResultContentType
 from astrbot.core.pipeline.context_utils import call_handler
 from astrbot.core.pipeline.process_stage.stage import ProcessStage
@@ -31,6 +32,92 @@ async def test_media_rows_contain_only_resource_tags(plugin):
     assert row["text"] == "看一下[image][video][file]"
     assert "private" not in row["segments"]
     assert "https" not in row["segments"]
+
+
+async def test_custom_command_prefix_never_enters_recording_or_gate(plugin):
+    plugin.settings.recorder["command_prefixes"] = ["/", "!"]
+    event = Event("!task private command")
+    plugin.controller.generate = AsyncMock()
+    await consume(plugin.observe(event))
+    assert await consume(plugin.participate(event)) == []
+    assert event.call_llm
+    assert not await plugin.storage.rows("SELECT * FROM messages")
+    context = json.loads(
+        await plugin.prompts.context(plugin.adapter.snapshot(event).scope)
+    )
+    assert context["messages"] == []
+    plugin.controller.generate.assert_not_awaited()
+
+
+@pytest.mark.parametrize("only_commands", [False, True])
+async def test_existing_command_records_are_not_read_by_context_or_summary(
+    plugin, only_commands
+):
+    plugin.settings.recorder["filter_commands"] = False
+    await consume(
+        plugin.observe(Event("/old private command", message_id="old-command"))
+    )
+    if not only_commands:
+        await consume(plugin.observe(Event("normal conversation", message_id="normal")))
+    await consume(
+        plugin.observe(Event("/tail private command", message_id="tail-command"))
+    )
+    plugin.settings.recorder.update(
+        filter_commands=True, summary_provider="summary", summary_every=1
+    )
+    scope = plugin.adapter.snapshot(Event()).scope
+    context = await plugin.prompts.context(scope)
+    assert "private command" not in context
+    generate = AsyncMock(return_value="clean diary")
+    plugin.summarizer.generate = generate
+    await plugin.summarizer.tick()
+    state = await plugin.storage.session(scope)
+    assert state["cursor"] == state["last_seq"]
+    assert state["summarized_count"] == state["human_count"]
+    if only_commands:
+        generate.assert_not_awaited()
+        assert not await plugin.storage.diaries(scope)
+    else:
+        assert "private command" not in generate.call_args.args[2]
+
+
+async def test_native_command_history_and_quote_are_filtered_without_changing_storage(
+    plugin,
+):
+    plugin.settings.recorder["command_prefixes"] = ["/", "!"]
+    history = [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "normal reply"},
+        {"role": "user", "content": "/status private input"},
+        {"role": "system", "content": "private command attachment"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "command-tool"}]},
+        {
+            "role": "tool",
+            "content": "private tool result",
+            "tool_call_id": "command-tool",
+        },
+        {"role": "user", "content": [{"type": "text", "text": "!task private input"}]},
+        {"role": "assistant", "content": "private command reply"},
+        {"role": "user", "content": "normal latest"},
+    ]
+    stored = json.dumps(history)
+    event = Event("regular conversation")
+    event.message_obj.message.append(
+        Reply(id="command", chain=[Plain("/status secret")])
+    )
+    request = ProviderRequest(contexts=json.loads(stored))
+    request.extra_user_content_parts = [
+        TextPart(text="<Quoted Message>\n/status secret"),
+        TextPart(text="other context"),
+    ]
+    plugin.adapter.filter_command_history(event, request)
+    assert request.contexts == history[:2] + history[-1:]
+    assert [part.text for part in request.extra_user_content_parts] == ["other context"]
+    assert stored == json.dumps(history)
+    plugin.settings.recorder["filter_commands"] = False
+    request.contexts = json.loads(stored)
+    plugin.adapter.filter_command_history(event, request)
+    assert request.contexts == history
 
 
 @pytest.mark.parametrize("direct, expected", [(True, 1), (False, 0)])
