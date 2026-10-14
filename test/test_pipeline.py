@@ -203,7 +203,7 @@ async def test_filtered_command_cancels_remaining_idle_bubbles(plugin):
     state = await plugin.storage.session(message.scope)
     idle = IdleEvent(plugin.context, source.platform_meta, state, plugin.generation)
     plugin.controller.decide = AsyncMock(
-        return_value=SimpleNamespace(reply=True, intent="开话题")
+        return_value=SimpleNamespace(reply=True, intent="开话题", reason="reply")
     )
     plugin.adapter.request = AsyncMock(return_value=ProviderRequest(prompt="你好"))
     generator = plugin.observe(idle)
@@ -288,6 +288,8 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
     root = Path(__file__).resolve().parents[1]
     schema = json.loads((root / "_conf_schema.json").read_text(encoding="utf-8"))
     config = AstrBotConfig(str(tmp_path / "config.json"), schema=schema)
+    assert config["controller"]["mode"] == "scheduled"
+    assert config["controller"]["force_at"] is True
     assert next(reversed(schema)) == "logging"
     for name in ("sessions", "manual_sessions"):
         assert schema["scope"]["items"][name]["condition"] == {"all_sessions": False}
@@ -332,3 +334,42 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
     finally:
         await instance.terminate()
     assert all(task.done() for task in instance.runtime.tasks)
+
+
+@pytest.mark.parametrize("force_at", [True, False])
+async def test_force_option_and_default_mode_survive_configuration_reload(
+    tmp_path, monkeypatch, config, force_at
+):
+    from humanization_test.main import Humanization
+
+    from astrbot.api import AstrBotConfig
+    from astrbot.api.star import StarTools
+
+    path = tmp_path / "config.json"
+    config["controller"]["at_weight"] = 0.5
+    config["controller"]["force_at"] = force_at
+    config["controller"]["names"] = ["睦"]
+    path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(StarTools, "get_data_dir", lambda: tmp_path)
+    context = SimpleNamespace(persona_manager=SimpleNamespace(get_persona=AsyncMock()))
+    for _ in range(2):
+        schema = json.loads(
+            (Path(__file__).resolve().parents[1] / "_conf_schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        loaded = AstrBotConfig(str(path), schema=schema)
+        instance = Humanization(context, loaded)
+        await instance.runtime.initialize()
+        try:
+            assert loaded["controller"]["mode"] == "scheduled"
+            assert loaded["controller"]["robot_name"] == "Bot"
+            assert loaded["controller"]["names"] == ["睦"]
+            assert loaded["controller"]["force_at"] is force_at
+            assert loaded.schema["controller"]["items"]["force_at"]["default"] is True
+        finally:
+            await instance.terminate()
+    assert (
+        json.loads(path.read_text(encoding="utf-8-sig"))["controller"]["force_at"]
+        is force_at
+    )

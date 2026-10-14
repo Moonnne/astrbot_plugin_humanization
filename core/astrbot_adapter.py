@@ -1,6 +1,7 @@
 """Integration with AstrBot's native request collector and event interfaces."""
 
 import asyncio
+import copy
 import json
 import time
 import uuid
@@ -16,6 +17,9 @@ from astrbot.core.pipeline.process_stage.follow_up import _ACTIVE_AGENT_RUNNERS
 from astrbot.core.platform.astrbot_message import AstrBotMessage, MessageMember
 from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.platform.message_type import MessageType
+from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
+    AiocqhttpMessageEvent,
+)
 from astrbot.core.provider.entities import TokenUsage
 from astrbot.core.star.filter.command import CommandFilter
 from astrbot.core.star.filter.command_group import CommandGroupFilter
@@ -69,6 +73,7 @@ class IdleEvent(AstrMessageEvent):
             message.message_str, message, platform_meta, session["group_id"]
         )
         self.context = context
+        self.on_cleanup = None
         self.set_extra(
             "humanization_idle",
             {"generation": generation, "last_human": session["last_human"]},
@@ -83,6 +88,76 @@ class IdleEvent(AstrMessageEvent):
         if not await self.context.send_message(self.route, message):
             raise RuntimeError("Active OneBot platform not found")
         await super().send(message)
+
+    def cleanup_temporary_local_files(self):
+        super().cleanup_temporary_local_files()
+        if self.on_cleanup is not None:
+            callback, self.on_cleanup = self.on_cleanup, None
+            callback()
+
+
+class ScheduledEvent(AiocqhttpMessageEvent):
+    """Retain a real OneBot input for delayed native Agent processing."""
+
+    def __init__(self, source, message, generation):
+        """Keep adapter capabilities while transferring temporary-file ownership.
+
+        Args:
+            source: Real OneBot event after native preprocessing and other handlers.
+            message: Stored incoming message used for the pending batch.
+            generation: Runtime identifier that rejects events after reload.
+        """
+        # Re-enter WakingCheck with raw text so wake prefixes are stripped only once.
+        super().__init__(
+            source.message_obj.message_str,
+            copy.deepcopy(source.message_obj),
+            source.platform_meta,
+            source.session_id,
+            getattr(source, "bot", None),
+        )
+        self.source = source
+        self.role = source.role
+        self.on_cleanup = None
+        self.set_extra("humanization_message", message)
+        self.set_extra("humanization_scheduled", {"generation": generation})
+        for key in (
+            "selected_provider",
+            "selected_model",
+            "_api_key_allow_admin_role",
+            "_current_platform_message_history_id",
+        ):
+            value = source.get_extra(key)
+            if value is not None:
+                self.set_extra(key, value)
+        for path in list(source._temporary_local_files):
+            source.untrack_temporary_local_file(path)
+            self.track_temporary_local_file(path)
+
+    async def send(self, message):
+        await self.source.send(message)
+        self._has_send_oper = True
+
+    async def send_typing(self):
+        await self.source.send_typing()
+
+    async def stop_typing(self):
+        await self.source.stop_typing()
+
+    def cleanup_temporary_local_files(self):
+        super().cleanup_temporary_local_files()
+        if self.on_cleanup is not None:
+            callback, self.on_cleanup = self.on_cleanup, None
+            callback()
+        self.get_extra("humanization_scheduled").pop("ticket", None)
+        self.source = None
+
+
+class InternalEventFilter(filter.CustomFilter):
+    def filter(self, event, cfg) -> bool:
+        return bool(
+            event.get_extra("humanization_scheduled")
+            or event.get_extra("humanization_idle")
+        )
 
 
 class AstrBotAdapter:

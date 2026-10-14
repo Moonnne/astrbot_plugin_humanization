@@ -46,6 +46,8 @@ class Event(AstrMessageEvent):
 @pytest.fixture
 async def plugin(config, tmp_path, monkeypatch):
     config["scope"]["sessions"] = ["onebot:GroupMessage:123"]
+    # Exercise immediate native turns here; queued turns have separate contracts.
+    config["controller"]["mode"] = "probability"
     config["controller"]["debounce_seconds"] = 0
     monkeypatch.setattr(
         SessionServiceManager,

@@ -66,7 +66,7 @@ class Delivery:
             replace(
                 message,
                 sender_id=message.self_id,
-                sender_name="Humanization",
+                sender_name=self.settings.controller["robot_name"].strip(),
                 message_id=f"reply:{turn['run']}:{index}",
                 sent_at=now,
                 received_at=now,

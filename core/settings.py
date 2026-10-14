@@ -2,6 +2,7 @@
 
 import json
 import math
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -46,6 +47,16 @@ class Settings:
         self.controller = config["controller"]
         self.proactive = config["proactive"]
         self.prompts = config["prompts"]
+        if self.controller["mode"] not in ("probability", "scheduled"):
+            raise ValueError("Unknown Controller mode")
+        if not self.controller["robot_name"].strip():
+            raise ValueError("Robot name must not be empty")
+        if (
+            not 0
+            < self.controller["wait_min_seconds"]
+            <= self.controller["wait_max_seconds"]
+        ):
+            raise ValueError("Require 0 < minimum scheduling wait <= maximum wait")
         for key in ("runtime_max_mb", "dev_max_mb"):
             limit = self.logging[key]
             if (
@@ -135,6 +146,68 @@ class Settings:
             if in_period(minute, period.start, period.end):
                 return period.private if private else period.group
         return float(self.controller["private" if private else "group"])
+
+    def mentioned(self, text: str) -> bool:
+        """Recognize configured names without matching inside Latin words.
+
+        Args:
+            text: Rendered incoming message content.
+
+        Returns:
+            Whether a name or alias appears in the message.
+        """
+        for value in [self.controller["robot_name"], *self.controller["names"]]:
+            name = value.strip()
+            if not name:
+                continue
+            if name.isascii():
+                if re.search(
+                    r"(?<![a-zA-Z0-9_])" + re.escape(name) + r"(?![a-zA-Z0-9_])",
+                    text,
+                    re.IGNORECASE,
+                ):
+                    return True
+            elif name in text:
+                return True
+        return False
+
+    def forced(self, direct_at: bool, mentioned: bool) -> bool:
+        return (direct_at and self.controller["force_at"]) or (
+            mentioned and self.controller["force_mention"]
+        )
+
+    def effective_activity(self, private, direct_at, mentioned, now) -> float:
+        activity = self.activity(private, now)
+        if direct_at:
+            return max(activity, self.controller["at_weight"])
+        if mentioned:
+            return max(activity, self.controller["mention_weight"])
+        return activity
+
+    def frequency_hint(self, activity: float) -> str:
+        """Describe nominal evaluation frequency, not a guaranteed reply rate.
+
+        Args:
+            activity: Default or period-specific participation value.
+
+        Returns:
+            Configuration-page explanation for the selected mode.
+        """
+        if activity == 0:
+            return "积极度0：普通消息不评估、不补偿；已开启的必回复另计。"
+        if self.controller["mode"] == "probability":
+            return f"当前积极度{activity:g}：每条候选消息约{activity * 100:g}%概率进入门控，实际回复占比通常更低。"
+        if activity == 1:
+            return "当前积极度1：每条新消息满足额度，通常只等合并窗口；冷却、退避和语义门控仍适用，必回复另计。"
+        wait = (
+            self.controller["wait_min_seconds"]
+            + (
+                self.controller["wait_max_seconds"]
+                - self.controller["wait_min_seconds"]
+            )
+            * (1 - activity) ** 2
+        )
+        return f"当前积极度{activity:g}：普通聊天平均约每{1 / activity:.2f}条新消息评估一次；低流量约{wait:.0f}秒内可补偿。连发合并、冷却和退避可能降低频率，实际发言由门控决定，必回复另计。"
 
     def quiet(self, now: datetime) -> bool:
         local = now.astimezone(self.timezone)

@@ -26,3 +26,4 @@ class Message:
 class Decision:
     reply: bool
     intent: str = ""
+    reason: str = ""

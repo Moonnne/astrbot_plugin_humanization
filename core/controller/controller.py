@@ -1,4 +1,4 @@
-"""Per-conversation turn ownership and probabilistic participation."""
+"""Per-conversation turn ownership and shared semantic participation."""
 
 import asyncio
 import json
@@ -22,48 +22,64 @@ class Controller:
         return self.locks.setdefault(scope, asyncio.Lock())
 
     async def decide(
-        self, message, direct_at: bool, mentioned: bool, idle: bool = False
+        self,
+        message,
+        direct_at: bool,
+        mentioned: bool,
+        idle: bool = False,
+        scheduled=None,
     ) -> Decision:
         cfg = self.settings.controller
         session = await self.storage.session(message.scope)
         now = datetime.now(self.settings.timezone)
-        if direct_at and cfg["at_weight"] == 1:
-            self.log.debug("gate.direct_reply", reason="at_weight_one")
-            return Decision(True, "回应这条明确 @ 你的消息")
+        forced = (
+            scheduled.forced
+            if scheduled is not None
+            else self.settings.forced(direct_at, mentioned)
+        )
+        if not idle and forced:
+            self.log.debug("gate.direct_reply", reason="force_at_or_name")
+            return Decision(
+                True, "回应这条明确叫你的消息；仍可按角色意愿拒绝任务", "forced"
+            )
         if now.timestamp() - session["last_reply"] < cfg["cooldown_seconds"]:
             self.log.debug("gate.wait", reason="cooldown")
-            return Decision(False)
-        probability = self.settings.activity(message.private, now)
-        if direct_at:
-            probability = max(probability, cfg["at_weight"])
-        elif mentioned:
-            probability = max(probability, cfg["mention_weight"])
+            return Decision(False, reason="cooldown")
+        activity = self.settings.effective_activity(
+            message.private, direct_at, mentioned, now
+        )
         if idle:
-            probability *= self.settings.proactive["probability"]
-        sample = self.random.random()
+            activity *= self.settings.proactive["probability"]
+        sample = self.random.random() if cfg["mode"] == "probability" else None
         self.log.debug(
-            "gate.sample",
-            probability=probability,
+            "gate.check",
+            activity=activity,
+            mode=cfg["mode"],
             sample=sample,
             idle=idle,
             direct_at=direct_at,
             mentioned=mentioned,
         )
-        if sample >= probability:
+        if activity == 0 or (sample is not None and sample >= activity):
             self.log.debug("gate.wait", reason="random_sample")
-            return Decision(False)
+            return Decision(False, reason="random_sample")
         provider = cfg["gate_provider"]
         if not provider:
             self.log.debug("gate.wait", reason="no_provider")
-            return Decision(False)
+            return Decision(False, reason="no_provider")
         system = await self.prompts.gate(message.private)
-        context = await self.prompts.context(message.scope)
+        context = (
+            await self.prompts.context(message.scope, through_seq=scheduled.sequence)
+            if scheduled is not None
+            else await self.prompts.context(message.scope)
+        )
         payload = json.dumps(
             {
                 "context": json.loads(context),
                 "trigger": "idle" if idle else "message",
                 "target": message.message_id,
-                "activity": probability,
+                "bot_id": message.self_id,
+                "activity": activity,
             },
             ensure_ascii=False,
             separators=(",", ":"),
@@ -86,10 +102,14 @@ class Controller:
                 action=result["action"],
                 intent=result.get("intent", ""),
             )
-            return Decision(result["action"] == "reply", result.get("intent", "")[:500])
+            return Decision(
+                result["action"] == "reply",
+                result.get("intent", "")[:500],
+                "reply" if result["action"] == "reply" else "semantic_wait",
+            )
         except Exception:
             self.log.exception("gate.failed", action="wait")
-            return Decision(False)
+            return Decision(False, reason="error")
 
     def idle_due(
         self, session: dict, now: datetime, check_schedule: bool = True

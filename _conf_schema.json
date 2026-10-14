@@ -110,12 +110,50 @@
         "default": true,
         "hint": "仅支持本地 Agent Runner。关闭时 Recorder 可继续观察，宿主按原规则回复。"
       },
+      "robot_name": {
+        "type": "string",
+        "description": "机器人名称",
+        "default": "Bot",
+        "hint": "Controller 正在为哪位机器人判断参与。与别名共同注入门控身份信息，不覆盖主模型的 AstrBot 人格。"
+      },
+      "names": {
+        "type": "list",
+        "description": "别名／昵称",
+        "default": [],
+        "hint": "机器人名称之外的别称，例如睦、睦头、木子米。用于识别点名，也会注入 Controller 门控提示词。主模型需在主人格中另行说明这些称呼。"
+      },
+      "mode": {
+        "type": "string",
+        "description": "工作模式",
+        "default": "scheduled",
+        "options": [
+          "scheduled",
+          "probability"
+        ],
+        "labels": [
+          "消息调度模式",
+          "概率抽样模式"
+        ],
+        "hint": "默认消息调度模式，按积极度累计额度并补偿低流量等待；概率模式按积极度随机抽样。实际发言仍由语义门控决定。"
+      },
       "gate_provider": {
         "type": "string",
         "description": "参与门控模型",
         "default": "",
         "_special": "select_provider",
-        "hint": "未选择时普通消息保持安静，@权重为1时仍由主模型回复。"
+        "hint": "未选择时普通消息保持安静；命中已开启的必回复选项仍由主模型回复。"
+      },
+      "force_at": {
+        "type": "bool",
+        "description": "@ 必回复",
+        "default": true,
+        "hint": "命中后绕过普通调度、抽样、语义门控及冷却，仍遵守宿主权限。必回复只表示提交主模型，角色仍可拒绝任务。"
+      },
+      "force_mention": {
+        "type": "bool",
+        "description": "提及必回复",
+        "default": false,
+        "hint": "命中机器人名称或别名后直接提交主模型，仍可按角色意愿拒绝任务；默认关闭。"
       },
       "timezone": {
         "type": "string",
@@ -124,33 +162,35 @@
       },
       "group": {
         "type": "float",
-        "description": "默认群聊积极性",
+        "description": "默认群聊积极度",
         "default": 0.2,
         "slider": {
           "min": 0,
           "max": 1,
           "step": 0.05
-        }
+        },
+        "hint": "消息调度：0.1≈每10条、0.2≈每5条、0.5≈每2条、0.8≈每1.25条评估；概率模式按该值抽样。保存重载并重新打开配置页后更新当前估计。"
       },
       "private": {
         "type": "float",
-        "description": "默认私聊积极性",
+        "description": "默认私聊积极度",
         "default": 0.8,
         "slider": {
           "min": 0,
           "max": 1,
           "step": 0.05
-        }
+        },
+        "hint": "消息调度：0.1≈每10条、0.2≈每5条、0.5≈每2条、0.8≈每1.25条评估；概率模式按该值抽样。保存重载并重新打开配置页后更新当前估计。"
       },
       "periods": {
         "type": "template_list",
-        "description": "分时段积极性",
+        "description": "分时段积极度",
         "default": [],
         "templates": {
           "period": {
             "name": "时间段",
             "display_item": "name",
-            "hint": "支持跨午夜，如23:00—08:00；结束时刻不包含在内。起止相同表示全天。时段不能重叠，未覆盖时使用默认积极性。",
+            "hint": "支持跨午夜，如23:00—08:00；结束时刻不包含在内。起止相同表示全天。时段不能重叠，未覆盖时使用默认积极度。",
             "items": {
               "name": {
                 "type": "string",
@@ -169,7 +209,7 @@
               },
               "group": {
                 "type": "float",
-                "description": "群聊积极性",
+                "description": "群聊积极度",
                 "default": 0.05,
                 "slider": {
                   "min": 0,
@@ -179,7 +219,7 @@
               },
               "private": {
                 "type": "float",
-                "description": "私聊积极性",
+                "description": "私聊积极度",
                 "default": 0.3,
                 "slider": {
                   "min": 0,
@@ -193,30 +233,25 @@
       },
       "mention_weight": {
         "type": "float",
-        "description": "普通提及回复权重",
+        "description": "名称／别名提及积极度下限",
         "default": 0.3,
         "slider": {
           "min": 0,
           "max": 1,
           "step": 0.05
-        }
+        },
+        "hint": "未开启提及必回复时使用 max(当前积极度, 此值)，不会降低当前积极度。"
       },
       "at_weight": {
         "type": "float",
-        "description": "@机器人回复权重",
+        "description": "@ 提及积极度下限",
         "default": 1.0,
         "slider": {
           "min": 0,
           "max": 1,
           "step": 0.05
         },
-        "hint": "1表示直接回复，绕过积极性、普通冷却和语义门控；仍遵守宿主禁用及权限。小于1时参与概率和门控判断。"
-      },
-      "names": {
-        "type": "list",
-        "description": "普通提及名称",
-        "default": [],
-        "hint": "填写机器人昵称，例如睦；不将@他人视为@机器人。"
+        "hint": "未开启 @ 必回复时使用 max(当前积极度, 此值)。即使为1也仍需语义门控判断，不表示必回复。"
       },
       "cooldown_seconds": {
         "type": "int",
@@ -227,6 +262,24 @@
         "type": "float",
         "description": "连续消息合并等待（秒）",
         "default": 1.5
+      },
+      "wait_min_seconds": {
+        "type": "float",
+        "description": "调度最短补偿等待（秒）",
+        "default": 5,
+        "condition": {
+          "mode": "scheduled"
+        },
+        "hint": "仅用于已有新消息但额度不足的补偿。等待=最短+(最长-最短)×(1-积极度)²；须大于0且不大于最长等待。"
+      },
+      "wait_max_seconds": {
+        "type": "float",
+        "description": "调度最长补偿等待（秒）",
+        "default": 60,
+        "condition": {
+          "mode": "scheduled"
+        },
+        "hint": "从这批最早未评估消息开始计算，防止持续聊天无限延期。冷却或退避可能延长等待；积极度0不补偿。"
       },
       "context_messages": {
         "type": "int",
@@ -272,14 +325,14 @@
       },
       "probability": {
         "type": "float",
-        "description": "主动评估概率系数",
+        "description": "主动评估系数",
         "default": 0.5,
         "slider": {
           "min": 0,
           "max": 1,
           "step": 0.05
         },
-        "hint": "与当前时段群聊积极性相乘；通过随机抽样后仍由门控模型决定。"
+        "hint": "与当前时段群聊积极度相乘。概率模式按乘积抽样；调度模式在每次合法空闲检查时累加该额度，满1后评估。两种模式都仍需语义门控判断。"
       },
       "daily_limit": {
         "type": "int",

@@ -1,12 +1,13 @@
 """AstrBot lifecycle and event registration for Humanization."""
 
 from contextlib import aclosing
+from sys import maxsize
 
 from astrbot.api import AstrBotConfig
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools
 
-from .core.astrbot_adapter import ScopeFilter
+from .core.astrbot_adapter import InternalEventFilter, ScopeFilter
 from .core.management import ManagementAccessFilter, ManagementMessageFilter
 from .core.runtime import Runtime
 
@@ -44,6 +45,19 @@ class Humanization(Star):
         item["options"] = list(choices)
         item["labels"] = list(choices.values())
         self.runtime.log.debug("scope.options.updated", option_count=len(choices))
+        items = self.config.schema["controller"]["items"]
+        for key in ("group", "private"):
+            items[key]["hint"] = (
+                self.runtime.settings.frequency_hint(self.config["controller"][key])
+                + "\n调度对照：0.1≈每10条、0.2≈每5条、0.5≈每2条、0.8≈每1.25条评估；0不评估。保存重载后更新当前估计。"
+            )
+        estimates = [
+            f"{period['name']} {period['start']}—{period['end']}：群聊 {self.runtime.settings.frequency_hint(period['group'])} 私聊 {self.runtime.settings.frequency_hint(period['private'])}"
+            for period in self.config["controller"]["periods"]
+        ]
+        items["periods"]["hint"] = "保存重载并重新打开配置页后更新。\n" + "\n".join(
+            estimates
+        )
 
     @filter.custom_filter(ManagementMessageFilter, priority=20000)
     async def management_guard(self, event: AstrMessageEvent):
@@ -89,6 +103,16 @@ class Humanization(Star):
         async with aclosing(self.runtime.observe(event)) as generator:
             async for result in generator:
                 yield result
+
+    # Run internal events before the host's incoming-message recorder and waiters.
+    @filter.custom_filter(InternalEventFilter, priority=maxsize + 1)
+    async def scheduled_event(self, event: AstrMessageEvent):
+        try:
+            async with aclosing(self.runtime.observe(event)) as generator:
+                async for result in generator:
+                    yield result
+        finally:
+            event.stop_event()
 
     @filter.custom_filter(ScopeFilter, priority=-10000)
     async def participate(self, event: AstrMessageEvent):

@@ -264,6 +264,7 @@ async def test_project_log_routing_and_private_text(
 
     config["logging"]["debug"] = debug
     config["scope"]["sessions"] = ["onebot:GroupMessage:123"]
+    config["controller"]["mode"] = "probability"
     config["controller"]["debounce_seconds"] = 0
     console = Mock()
     context = SimpleNamespace(

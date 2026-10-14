@@ -1,9 +1,10 @@
 name: astrbot_plugin_humanization
 display_name: Humanization
-desc: Humanization | 拟人化插件，让机器人行为更接近真人用户。包括群聊内容感知、滚动日记、分时段参与门控与主动对话能力。
-version: v0.1.1
+desc: Humanization | 拟人化聊天插件，支持群聊感知、滚动日记、分时段积极度、消息调度与概率抽样，以及主动对话能力。
+version: v0.1.2
 author: Moonne
 repo: https://github.com/Moonnne/astrbot_plugin_humanization
 astrbot_version: '>=4.28.1,<5'
 support_platforms:
   - aiocqhttp
+# AstrBot automatically discovers the plugin icon at ./logo.png.

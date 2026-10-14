@@ -1,6 +1,8 @@
 """Replay through real host decoration, responding and completion hooks."""
 
+import asyncio
 import copy
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -14,7 +16,7 @@ from astrbot.core.astr_agent_run_util import run_agent
 from astrbot.core.config.default import DEFAULT_CONFIG
 from astrbot.core.message.message_event_result import ResultContentType
 from astrbot.core.pipeline.context_utils import call_handler
-from astrbot.core.pipeline.process_stage.stage import ProcessStage
+from astrbot.core.pipeline.process_stage.stage import ProcessStage, StarRequestSubStage
 from astrbot.core.pipeline.respond.stage import RespondStage
 from astrbot.core.pipeline.result_decorate import stage as decorate_module
 from astrbot.core.pipeline.result_decorate.stage import ResultDecorateStage
@@ -74,16 +76,24 @@ async def native(plugin, monkeypatch):
     )
     process.ctx = ctx
 
-    async def handler(event):
-        async for result in call_handler(event, plugin.participate):
-            yield result
-
-    process.star_request_sub_stage = SimpleNamespace(process=handler)
     plugin.adapter.request = AsyncMock(return_value=ProviderRequest(prompt="你好"))
 
     async def run(event, agent):
         event.set_extra("activated_handlers", [SimpleNamespace(event_filters=[])])
-        await consume(plugin.observe(event))
+        internal = bool(
+            event.get_extra("humanization_scheduled")
+            or event.get_extra("humanization_idle")
+        )
+        if not internal:
+            await consume(plugin.observe(event))
+
+        async def handler(event):
+            async for result in call_handler(
+                event, plugin.observe if internal else plugin.participate
+            ):
+                yield result
+
+        process.star_request_sub_stage = SimpleNamespace(process=handler)
         process.agent_sub_stage = SimpleNamespace(process=agent)
         decorate = ResultDecorateStage()
         respond = RespondStage()
@@ -153,6 +163,92 @@ async def test_agent_finishes_before_replay_and_native_quote_prefix_hooks_surviv
     assert (await plugin.storage.rows("SELECT * FROM reply_runs"))[0][
         "status"
     ] == "processed"
+
+
+@pytest.mark.parametrize("mode", ["quote", "tts", "t2i", "segments", "tool_notice"])
+async def test_scheduled_event_keeps_native_decorators_and_completion_hooks(
+    plugin, native, monkeypatch, mode
+):
+    from test_scheduling import Clock
+
+    plugin.settings.controller.update(mode="scheduled", group=1, force_at=True)
+    queue = asyncio.Queue()
+    plugin.context.get_event_queue = lambda: queue
+    clock = Clock(time.time())
+    plugin.scheduler.clock = clock
+    plugin.scheduler.call_later = clock.later
+    native.config["platform_settings"]["reply_with_quote"] = mode == "quote"
+    if mode == "tts":
+        native.config["provider_tts_settings"].update(
+            enable=True,
+            dual_output=False,
+            use_file_service=False,
+            trigger_probability=1,
+        )
+        plugin.context.get_using_tts_provider_async = AsyncMock(
+            return_value=SimpleNamespace(get_audio=AsyncMock(return_value="voice.wav"))
+        )
+        monkeypatch.setattr(
+            SessionServiceManager,
+            "should_process_tts_request",
+            AsyncMock(return_value=True),
+        )
+    if mode == "t2i":
+        native.config.update(t2i=True, t2i_word_threshold=1)
+        monkeypatch.setattr(
+            decorate_module.html_renderer,
+            "render_t2i",
+            AsyncMock(return_value="image.png"),
+        )
+    if mode == "segments":
+        native.config["platform_settings"]["segmented_reply"].update(
+            enable=True,
+            interval="0,0",
+            interval_method="random",
+            regex="[^？]+？|[^？]+$",
+            content_cleanup_rule="",
+        )
+    source = Event("真实输入", direct=True)
+    await consume(plugin.observe(source))
+    await consume(plugin.participate(source))
+    clock.advance(0)
+    event = queue.get_nowait()
+    saved = []
+
+    async def agent(event):
+        if mode == "tool_notice":
+            event.set_result(event.plain_result("工具状态通知"))
+            yield
+        text = (
+            "这是一段满足文转图条件的原生回复" * 8
+            if mode == "t2i"
+            else "现在好了？还能打开吗？"
+        )
+        async for result in native.answer(event, text=text, saved=saved):
+            yield result
+
+    await native.run(event, agent)
+    assert saved == ["history saved"]
+    assert event.is_stopped()
+    assert (
+        len(await plugin.storage.rows("SELECT * FROM messages WHERE direction='in'"))
+        == 1
+    )
+    assert native.hooks
+    if mode == "quote":
+        assert isinstance(source.sent[0].chain[0], Reply)
+    elif mode == "tts":
+        assert isinstance(source.sent[0].chain[0], Record)
+    elif mode == "t2i":
+        assert isinstance(source.sent[0].chain[0], Image)
+    elif mode == "segments":
+        assert [chain.get_plain_text() for chain in source.sent] == [
+            "现在好了？",
+            "还能打开吗？",
+        ]
+    else:
+        assert source.sent[0].get_plain_text() == "工具状态通知"
+    assert event.get_extra("humanization_turn") is None
 
 
 @pytest.mark.parametrize("mode, tag", [("tts", "record"), ("t2i", "image")])
@@ -242,8 +338,9 @@ async def test_final_media_and_general_notifications_are_preserved(plugin, nativ
 
 
 @pytest.mark.parametrize("late_hook", [False, True])
+@pytest.mark.parametrize("scheduled", [False, True])
 async def test_native_tool_loop_and_late_completion_hook_are_not_cut_short(
-    plugin, native, late_hook
+    plugin, native, late_hook, scheduled
 ):
     order = []
 
@@ -303,12 +400,90 @@ async def test_native_tool_loop_and_late_completion_hook_are_not_cut_short(
         order.append("history saved")
 
     event = Event(direct=True)
+    if scheduled:
+        from test_scheduling import Clock
+
+        plugin.settings.controller["mode"] = "scheduled"
+        queue = asyncio.Queue()
+        plugin.context.get_event_queue = lambda: queue
+        clock = Clock(time.time())
+        plugin.scheduler.clock = clock
+        plugin.scheduler.call_later = clock.later
+        await consume(plugin.observe(event))
+        await consume(plugin.participate(event))
+        clock.advance(0)
+        event = queue.get_nowait()
+        sent = event.source.sent
+    else:
+        sent = event.sent
     await native.run(event, agent)
     assert order == ["tool called", "history saved"]
-    assert isinstance(event.sent[0].chain[0], Image)
-    assert [chain.get_plain_text() for chain in event.sent[1:]] == ["查到了", "你看"]
+    assert isinstance(sent[0].chain[0], Image)
+    assert [chain.get_plain_text() for chain in sent[1:]] == ["查到了", "你看"]
     assert len(native.hooks) == 2
-    assert not event.is_stopped()
+    assert event.is_stopped() is scheduled
+
+
+async def test_native_group_recorder_and_other_handlers_do_not_replay_scheduled_input(
+    plugin, native
+):
+    from humanization_test.main import Humanization
+    from test_scheduling import Clock
+
+    from astrbot.builtin_stars.astrbot.main import Main
+
+    plugin.settings.controller.update(mode="scheduled", group=1, force_at=False)
+    queue = asyncio.Queue()
+    plugin.context.get_event_queue = lambda: queue
+    clock = Clock(time.time())
+    plugin.scheduler.clock = clock
+    plugin.scheduler.call_later = clock.later
+    manager = SimpleNamespace(
+        insert_message_chain=AsyncMock(return_value=SimpleNamespace(id=7))
+    )
+    recorder = SimpleNamespace(
+        context=SimpleNamespace(
+            get_config=lambda **kw: {
+                "provider_ltm_settings": {"group_message_history_enable": True}
+            },
+            message_history_manager=manager,
+        )
+    )
+    source = Event("original input")
+    await Main.persist_group_message(recorder, source)
+    await consume(plugin.observe(source))
+    await consume(plugin.participate(source))
+    clock.advance(0)
+    event = queue.get_nowait()
+    assert event.get_extra("_current_platform_message_history_id") == 7
+    other_handler = AsyncMock()
+
+    async def guard(event):
+        async for result in Humanization.scheduled_event(
+            SimpleNamespace(runtime=plugin), event
+        ):
+            yield result
+
+    async def persist(event):
+        await Main.persist_group_message(recorder, event)
+
+    handlers = [
+        native.metadata(name, handler)
+        for name, handler in (
+            ("guard", guard),
+            ("persist", persist),
+            ("other", other_handler),
+        )
+    ]
+    for handler in handlers:
+        handler.handler_full_name = handler.handler_name
+    event.set_extra("activated_handlers", handlers)
+    stage = StarRequestSubStage()
+    assert await consume(stage.process(event)) == [None]
+    assert event.is_stopped()
+    manager.insert_message_chain.assert_awaited_once()
+    other_handler.assert_not_awaited()
+    assert len(await plugin.storage.rows("SELECT * FROM messages")) == 1
 
 
 async def test_filter_failure_keeps_agent_history_and_releases_cache(plugin, native):

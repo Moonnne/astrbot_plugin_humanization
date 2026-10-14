@@ -186,7 +186,7 @@ async def test_gate_context_prefix_survives_changed_trigger_fields(plugin):
     payload = json.loads(first)
     assert isinstance(payload["context"], dict)
     assert payload["context"]["messages"][0]["message_id"] == message.message_id
-    assert list(payload) == ["context", "trigger", "target", "activity"]
+    assert list(payload) == ["context", "trigger", "target", "bot_id", "activity"]
 
 
 async def test_auxiliary_debug_log_records_estimate_and_provider_usage(plugin):

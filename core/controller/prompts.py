@@ -29,6 +29,15 @@ class Prompts:
         return "\n\n".join(
             [
                 self.text["gate"],
+                "你正在为以下机器人判断是否参与聊天；用名称和别名辨认发言指向，不把同名提及一律视为任务："
+                + json.dumps(
+                    {
+                        "name": self.settings.controller["robot_name"].strip(),
+                        "aliases": self.settings.controller["names"],
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
                 await self.fragment("behavior"),
                 await self.fragment("private" if private else "group"),
             ]
@@ -44,11 +53,29 @@ class Prompts:
         )
 
     async def context(
-        self, scope: str, exclude_id: str = "", for_llm: bool = False
+        self,
+        scope: str,
+        exclude_id: str = "",
+        for_llm: bool = False,
+        through_seq: int | None = None,
     ) -> str:
-        rows = await self.storage.recent(
-            scope, self.settings.controller["context_messages"]
-        )
+        if through_seq is None:
+            rows = await self.storage.recent(
+                scope, self.settings.controller["context_messages"]
+            )
+        else:
+            rows = list(
+                reversed(
+                    await self.storage.rows(
+                        "SELECT * FROM messages WHERE scope=? AND seq<=? ORDER BY seq DESC LIMIT ?",
+                        (
+                            scope,
+                            through_seq,
+                            self.settings.controller["context_messages"],
+                        ),
+                    )
+                )
+            )
         messages = []
         remaining = self.settings.recorder["context_chars"]
         for row in reversed(rows):

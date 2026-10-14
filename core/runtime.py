@@ -19,6 +19,7 @@ from .astrbot_adapter import AstrBotAdapter, IdleEvent, ScopeFilter
 from .controller.controller import Controller
 from .controller.delivery import Delivery, ReplayResult
 from .controller.prompts import Prompts
+from .controller.scheduler import Scheduler
 from .management import Management, ManagementAccessFilter
 from .recorder.storage import Storage
 from .recorder.summarizer import Summarizer
@@ -40,6 +41,12 @@ class Runtime:
         )
         self.adapter = AstrBotAdapter(context, self.settings, self.log)
         self.generation = uuid.uuid4().hex
+        self.scheduler = Scheduler(
+            self.settings,
+            lambda event: self.context.get_event_queue().put_nowait(event),
+            self.generation,
+            self.log,
+        )
         self.tasks = set()
         self.active = set()
         self.active_scopes = {}
@@ -109,15 +116,28 @@ class Runtime:
     async def observe(self, event: AstrMessageEvent):
         if self.closed or event.get_extra("humanization_management"):
             return
+        scheduled = event.get_extra("humanization_scheduled")
+        if scheduled:
+            ticket = self.scheduler.claim(event)
+            if ticket is not None:
+                event.should_call_llm(True)
+                async with aclosing(self.turn(event, scheduled=ticket)) as generator:
+                    async for request in generator:
+                        yield request
+            event.stop_event()
+            return
         idle = event.get_extra("humanization_idle")
         if idle:
             if idle["generation"] != self.generation:
                 event.stop_event()
                 return
             event.should_call_llm(True)
-            async with aclosing(self.turn(event, idle=True)) as generator:
-                async for request in generator:
-                    yield request
+            try:
+                async with aclosing(self.turn(event, idle=True)) as generator:
+                    async for request in generator:
+                        yield request
+            finally:
+                self.scheduler.end_idle(self.adapter.snapshot(event).scope)
             event.stop_event()
             return
         if str(event.get_self_id()) == str(event.get_sender_id()):
@@ -152,6 +172,10 @@ class Runtime:
             message = self.adapter.snapshot(event)
             if await self.storage.append(message):
                 event.set_extra("humanization_message", message)
+                if self.settings.controller["mode"] == "scheduled" and not command:
+                    event.set_extra(
+                        "humanization_record", await self.storage.session(message.scope)
+                    )
                 self.log.debug(
                     "message.recorded",
                     message_id=message.message_id,
@@ -166,16 +190,23 @@ class Runtime:
             return
         if event.get_extra("humanization_command") or event._has_send_oper:
             return
+        if self.settings.controller["mode"] == "scheduled":
+            message = event.get_extra("humanization_message")
+            if message is not None:
+                session = event.get_extra("humanization_record")
+                self.scheduler.submit(event, message, session)
+            return
         async with aclosing(self.turn(event)) as generator:
             async for request in generator:
                 yield request
 
-    async def turn(self, event, idle: bool = False):
+    async def turn(self, event, idle: bool = False, scheduled=None):
         """Hold group ownership across the native pipeline's generator yield.
 
         Args:
             event: A real incoming event or a marked scheduler event.
             idle: Whether a quiet-group trigger initiated this turn.
+            scheduled: Claimed scheduling batch, or None in probability mode.
 
         Yields:
             A native ProviderRequest if participation is granted.
@@ -198,6 +229,7 @@ class Runtime:
         run = None
         turn = None
         previous_streaming = event.get_extra("enable_streaming")
+        outcome = "skipped"
         try:
             async with self.log.context("reply"), self.controller.lock(message.scope):
                 if self.closed or not await self.adapter.can_reply(event):
@@ -216,18 +248,36 @@ class Runtime:
                         check_schedule=False,
                     ):
                         return
-                else:
-                    await asyncio.sleep(self.settings.controller["debounce_seconds"])
+                elif scheduled is None:
+                    mentioned = self.settings.mentioned(message.text)
+                    forced = self.settings.forced(direct_at, mentioned)
+                    if not forced:
+                        await asyncio.sleep(
+                            self.settings.controller["debounce_seconds"]
+                        )
                     session = await self.storage.session(message.scope)
-                    if not direct_at and session["last_human"] > message.received_at:
+                    if (
+                        not forced
+                        and not direct_at
+                        and session["last_human"] > message.received_at
+                    ):
                         self.log.debug("reply.skipped", reason="newer_message")
                         return
-                mentioned = any(
-                    name and name in message.text
-                    for name in self.settings.controller["names"]
-                )
-                decision = await self.controller.decide(
-                    message, direct_at, mentioned, idle
+                mentioned = self.settings.mentioned(message.text)
+                if scheduled is None:
+                    decision = await self.controller.decide(
+                        message, direct_at, mentioned, idle
+                    )
+                else:
+                    decision = await self.controller.decide(
+                        message,
+                        scheduled.direct_at,
+                        scheduled.mentioned,
+                        idle,
+                        scheduled=scheduled,
+                    )
+                outcome = decision.reason or (
+                    "reply" if decision.reply else "semantic_wait"
                 )
                 if not decision.reply:
                     self.log.debug("reply.skipped", reason="gate_wait")
@@ -310,10 +360,17 @@ class Runtime:
                 )
             raise
         except Exception:
+            outcome = "error"
             if run is not None:
                 await self.storage.finish_reply(run, "failed", len(turn["recorded"]))
             self.log.exception("reply.failed", run=run)
         finally:
+            if scheduled is not None:
+                self.scheduler.complete(
+                    scheduled, outcome, bool(turn and turn["recorded"])
+                )
+            if idle:
+                self.scheduler.end_idle(message.scope, bool(turn and turn["recorded"]))
             if turn is not None:
                 # Release all cached component references even on cancellation.
                 turn.clear()
@@ -334,7 +391,12 @@ class Runtime:
         self.adapter.filter_command_quote(event, request)
         request.system_prompt += "\n\n" + await self.prompts.reply(message.private)
         context = await self.prompts.context(
-            message.scope, message.message_id, for_llm=True
+            message.scope,
+            message.message_id,
+            for_llm=True,
+            through_seq=event.get_extra("humanization_scheduled")["ticket"].sequence
+            if event.get_extra("humanization_scheduled")
+            else None,
         )
         self.log.info("context.prepare", run=turn["run"], context_chars=len(context))
         self.adapter.inject_observation(request, context, turn["intent"])
@@ -504,6 +566,13 @@ class Runtime:
                             conversation=self.log.identity(session["scope"]),
                         )
                         continue
+                    if self.settings.controller[
+                        "mode"
+                    ] == "scheduled" and not self.scheduler.idle_ready(
+                        session["scope"],
+                        self.settings.activity(False, now),
+                    ):
+                        continue
                     await self.storage.update_session(
                         session["scope"],
                         next_idle=now.timestamp()
@@ -514,12 +583,17 @@ class Runtime:
                             event = IdleEvent(
                                 self.context, platform.meta(), session, self.generation
                             )
+                            event.on_cleanup = lambda scope=session["scope"]: (
+                                self.scheduler.end_idle(scope)
+                            )
                             await self.context.get_event_queue().put(event)
                             self.log.debug(
                                 "idle.queued",
                                 conversation=self.log.identity(session["scope"]),
                             )
                             break
+                    else:
+                        self.scheduler.end_idle(session["scope"])
             except Exception:
                 self.log.exception("idle.worker.failed")
 
@@ -532,6 +606,7 @@ class Runtime:
         """
         scope = message.scope
         async with self.record_locks.setdefault(scope, asyncio.Lock()):
+            self.scheduler.reset(scope)
             self.reset_since[scope] = time.time()
             self.summarizer.resetting.add(scope)
             restart_summary = self.summarizer.active_scope == scope
@@ -591,6 +666,7 @@ class Runtime:
 
     async def terminate(self):
         self.closed = True
+        self.scheduler.close()
         self.admin.close()
         if ScopeFilter.settings is self.settings:
             ScopeFilter.settings = None
