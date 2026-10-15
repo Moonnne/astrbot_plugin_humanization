@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from diary_helpers import model_change, topic_change
 from humanization_test.core.controller.controller import Controller
 from humanization_test.core.models import Message
 from humanization_test.core.recorder.storage import Storage
@@ -76,7 +77,7 @@ def test_overlapping_periods_rejected(config):
 
 
 def test_invalid_summary_window_rejected(config):
-    config["recorder"]["summary_every"] = 101
+    config["recorder"]["summary_every"] = config["recorder"]["window"] + 1
     with pytest.raises(ValueError, match="summary_every"):
         Settings(config)
 
@@ -159,7 +160,7 @@ async def test_summary_failure_preserves_cursor_and_records_gap(storage, config,
         await worker.summarize(session, pending)
     assert (await storage.session("group"))["cursor"] == 0
     generate.side_effect = None
-    generate.return_value = "今天讨论了植物"
+    generate.return_value = model_change("今天讨论了植物", 4)
     await worker.summarize(session, pending)
     assert (await storage.session("group"))["cursor"] == 8
     assert "覆盖缺口" in (await storage.diaries("group"))[0]["body"]
@@ -167,11 +168,17 @@ async def test_summary_failure_preserves_cursor_and_records_gap(storage, config,
 
 async def test_sealed_summary_is_immutable(storage):
     await storage.append(message(1))
-    await storage.commit_summary("group", "2026-10-12", "Yesterday", 1, 1, 1)
-    await storage.commit_summary("group", "2026-10-13", "Today", 1, 1, 2)
+    await storage.commit_summary(
+        "group", "2026-10-12", [topic_change("Yesterday")], 1, 1, 1
+    )
+    await storage.commit_summary(
+        "group", "2026-10-13", [topic_change("Today")], 1, 1, 2
+    )
     with pytest.raises(ValueError, match="sealed"):
-        await storage.commit_summary("group", "2026-10-12", "Changed", 1, 1, 3)
-    assert (await storage.diaries("group"))[0]["body"] == "Yesterday"
+        await storage.commit_summary(
+            "group", "2026-10-12", [topic_change("Changed")], 1, 1, 3
+        )
+    assert (await storage.diaries("group"))[0]["topics"][0]["topic"] == "Yesterday"
 
 
 async def test_summary_advances_only_over_input_budget(storage, config, log):
@@ -180,7 +187,7 @@ async def test_summary_advances_only_over_input_budget(storage, config, log):
     for i in range(3):
         await storage.append(replace(message(i), text="x" * 300))
     worker = Summarizer(
-        storage, settings, AsyncMock(return_value="Summary"), "summarize", log
+        storage, settings, AsyncMock(return_value='{"changes":[]}'), "summarize", log
     )
     await worker.summarize(
         await storage.session("group"), await storage.recent("group", 10)

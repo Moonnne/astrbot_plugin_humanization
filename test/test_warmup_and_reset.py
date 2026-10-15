@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from diary_helpers import topic_change
 from humanization_test.core.astrbot_adapter import IdleEvent
 from humanization_test.core.models import Decision
 from humanization_test.core.settings import Settings
@@ -201,7 +202,9 @@ async def test_private_target_reset_preserves_caller_and_other_chats(
     group = managed.adapter.snapshot(group_event)
     today = datetime.now(managed.settings.timezone).date()
     for day in ((today - timedelta(days=1)).isoformat(), today.isoformat()):
-        await managed.storage.commit_summary(group.scope, day, day, 1, 1, time.time())
+        await managed.storage.commit_summary(
+            group.scope, day, [topic_change(day)], 1, 1, time.time()
+        )
     manager = managed.context.conversation_manager
     manager.get_conversations.return_value = [
         SimpleNamespace(user_id="onebot:GroupMessage:43_123"),
@@ -283,7 +286,7 @@ async def test_reset_all_cancels_pending_and_active_work_in_disabled_scopes(mana
     private = managed.adapter.snapshot(admin_event("private", private=True))
     await managed.storage.append(private)
     await managed.storage.commit_summary(
-        group.scope, group.day, "diary", 1, 1, time.time()
+        group.scope, group.day, [topic_change("diary")], 1, 1, time.time()
     )
     await managed.storage.start_reply(group.scope, time.time(), "message")
     # Disabling the scope does not protect its existing data from an explicit wipe.
@@ -307,7 +310,7 @@ async def test_reset_all_cancels_pending_and_active_work_in_disabled_scopes(mana
     assert old.cancelled() and managed.summary_task is not old
     assert not managed.resetting_all and not managed.scheduler.states
     assert not managed.admin.pending
-    for table in ("sessions", "messages", "daily_summaries", "reply_runs"):
+    for table in ("sessions", "messages", "diary_days", "diary_topics", "reply_runs"):
         assert not await managed.storage.rows(f"SELECT * FROM {table}")
     assert await consume(managed.observe(stale)) == [] and stale.is_stopped()
     assert managed.storage.path.exists()
@@ -356,7 +359,7 @@ async def test_retained_diaries_remain_addressable_after_today_reset(
         datetime.now(managed.settings.timezone).date() - timedelta(days=1)
     ).isoformat()
     await managed.storage.commit_summary(
-        message.scope, yesterday, "older", 1, 1, time.time()
+        message.scope, yesterday, [topic_change("older")], 1, 1, time.time()
     )
     await managed.reset_scope(message, message.day)
     assert not await managed.storage.rows("SELECT * FROM sessions")

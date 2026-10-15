@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from diary_helpers import model_change, topic_change
 from test_host_contract import Event, consume
 from test_host_contract import plugin as plugin
 
@@ -350,7 +351,7 @@ async def test_summary_diary_changes_do_not_change_message_prefix(plugin):
     event = Event()
     await consume(plugin.observe(event))
     scope = event.get_extra("humanization_message").scope
-    generate = AsyncMock(return_value="updated diary")
+    generate = AsyncMock(return_value=model_change("updated diary"))
     plugin.summarizer.generate = generate
     pending = await plugin.storage.recent(scope, 100)
     session = await plugin.storage.session(scope)
@@ -371,8 +372,36 @@ async def test_summary_diary_changes_do_not_change_message_prefix(plugin):
         "already_summarized_through_seq",
         "existing_diaries",
         "coverage_gap",
+        "output_char_limit",
         "instruction",
     ]
+
+
+async def test_shared_model_observations_render_topics_once_and_report_omissions(
+    plugin,
+):
+    event = Event()
+    await consume(plugin.observe(event))
+    message = event.get_extra("humanization_message")
+    await plugin.storage.commit_summary(
+        message.scope,
+        message.day,
+        [topic_change("old topic"), topic_change("new topic", 2)],
+        1,
+        1,
+        1,
+    )
+    latest = (await plugin.storage.diaries(message.scope))[0]["topics"][-1]
+    plugin.settings.recorder["diary_context_chars"] = len(
+        json.dumps(latest, ensure_ascii=False, separators=(",", ":"))
+    )
+    context = json.loads(await plugin.prompts.context(message.scope))
+    diary = context["diaries"][0]
+    assert "topics" not in diary
+    assert diary["omitted_topics"] == 1
+    assert "[Topic]new topic" in diary["body"]
+    assert "[Topic]old topic" not in diary["body"]
+    assert len((await plugin.storage.diaries(message.scope))[0]["topics"]) == 2
 
 
 async def test_unified_filter_excludes_existing_command_observations(plugin):
@@ -390,7 +419,9 @@ async def test_summary_overlap_reuses_previous_message_prefix(plugin):
     first_event = Event("first discussion", message_id="first")
     await consume(plugin.observe(first_event))
     scope = first_event.get_extra("humanization_message").scope
-    generate = AsyncMock(return_value="updated diary")
+    generate = AsyncMock(
+        side_effect=[model_change("updated diary", 1), model_change("new diary", 2)]
+    )
     plugin.summarizer.generate = generate
     await plugin.summarizer.summarize(
         await plugin.storage.session(scope), await plugin.storage.recent(scope, 100)

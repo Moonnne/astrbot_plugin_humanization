@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from diary_helpers import topic_change
 from humanization_test.main import Humanization
 from test_host_contract import Event, consume
 from test_host_contract import plugin as plugin
@@ -154,13 +155,13 @@ async def test_scoped_reset_clears_counters_and_preserves_other_chats(managed, m
     today = datetime.now(managed.settings.timezone).date()
     yesterday = (today - timedelta(days=1)).isoformat()
     await managed.storage.commit_summary(
-        message.scope, yesterday, "older", 1, 1, time.time()
+        message.scope, yesterday, [topic_change("older")], 1, 1, time.time()
     )
     await managed.storage.commit_summary(
-        message.scope, today.isoformat(), "today", 1, 1, time.time()
+        message.scope, today.isoformat(), [topic_change("today")], 1, 1, time.time()
     )
     await managed.storage.commit_summary(
-        other.scope, today.isoformat(), "other", 1, 1, time.time()
+        other.scope, today.isoformat(), [topic_change("other")], 1, 1, time.time()
     )
     await managed.storage.start_reply(message.scope, time.time(), "message")
     await managed.storage.start_reply(other.scope, time.time(), "message")
@@ -177,7 +178,9 @@ async def test_scoped_reset_clears_counters_and_preserves_other_chats(managed, m
         "SELECT * FROM reply_runs WHERE scope=?", (other.scope,)
     )
     diaries = await managed.storage.diaries(message.scope)
-    assert [row["body"] for row in diaries] == (["older"] if mode == "today" else [])
+    assert [row["topics"][0]["topic"] for row in diaries] == (
+        ["older"] if mode == "today" else []
+    )
     manager = managed.context.conversation_manager
     assert manager.new_conversation.await_count == 1
     assert manager.new_conversation.call_args.kwargs["persona_id"] == "mutsumi"
@@ -253,7 +256,7 @@ async def test_reset_cancels_pending_summary_without_restoring_diary(managed):
     await started.wait()
     await managed.reset_scope(source.get_extra("humanization_message"), None)
     assert old.cancelled()
-    assert not await managed.storage.rows("SELECT * FROM daily_summaries")
+    assert not await managed.storage.rows("SELECT * FROM diary_days")
     assert managed.summary_task is not old
 
 

@@ -5,6 +5,8 @@ import json
 from datetime import datetime
 from time import perf_counter
 
+from .diary import DiaryProtocol
+
 
 class Summarizer:
     def __init__(self, storage, settings, generate, prompt: str, log):
@@ -76,6 +78,7 @@ class Summarizer:
         config = self.settings.recorder
         selected = []
         size = 0
+        clipped = False
         for row in pending:
             if self.settings.is_command_record(row):
                 continue
@@ -91,6 +94,9 @@ class Summarizer:
                     "text",
                 )
             }
+            item["local_time"] = datetime.fromtimestamp(
+                row["sent_at"], self.settings.timezone
+            ).strftime("%Y-%m-%d %H:%M %z")
             # Clip an individual oversized message explicitly; never imply full coverage.
             if len(item["text"]) > config["context_chars"] // 2:
                 item["text"] = (
@@ -99,6 +105,7 @@ class Summarizer:
             cost = len(json.dumps(item, ensure_ascii=False, separators=(",", ":")))
             if selected and size + cost > config["context_chars"]:
                 break
+            clipped |= item["text"] != row["text"]
             selected.append(item)
             size += cost
         if not selected:
@@ -117,7 +124,11 @@ class Summarizer:
         )
         now = datetime.now(self.settings.timezone)
         day = now.date().isoformat()
-        diaries = await self.storage.diaries(session["scope"])
+        diaries = await self.storage.diaries(
+            session["scope"], budget=config["diary_context_chars"]
+        )
+        for diary in diaries:
+            diary.pop("body")
         gap = pending[0]["seq"] > session["cursor"] + 1
         # Overlap supplies context without advancing already summarized messages.
         overlap = []
@@ -141,6 +152,9 @@ class Summarizer:
                         "text",
                     )
                 }
+                item["local_time"] = datetime.fromtimestamp(
+                    row["sent_at"], self.settings.timezone
+                ).strftime("%Y-%m-%d %H:%M %z")
                 cost = len(json.dumps(item, ensure_ascii=False, separators=(",", ":")))
                 if size + cost > config["context_chars"]:
                     break
@@ -151,8 +165,9 @@ class Summarizer:
             "messages": list(reversed(overlap)) + selected,
             "already_summarized_through_seq": session["cursor"],
             "existing_diaries": diaries,
-            "coverage_gap": gap,
-            "instruction": "合并为今日完整日记；旧日期消息作为补记，历史日记仅供参考。",
+            "coverage_gap": gap or clipped,
+            "output_char_limit": config["summary_output_chars"],
+            "instruction": "只返回话题变更 JSON；历史日记仅供参考，旧日期消息在今日补记。",
         }
         self.log.debug(
             "summary.input", provider=config["summary_provider"], payload=payload
@@ -164,16 +179,19 @@ class Summarizer:
                 json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
                 purpose="recorder",
             )
-        body = body.strip()
-        if not body:
-            raise ValueError("Summary model returned empty text")
-        if datetime.now(self.settings.timezone).date().isoformat() != day:
+        changes = DiaryProtocol.parse(
+            body,
+            payload["messages"],
+            diaries,
+            session["cursor"],
+            day,
+            config["summary_output_chars"],
+        )
+        committed_at = datetime.now(self.settings.timezone)
+        if committed_at.date().isoformat() != day:
             raise ValueError(
                 "Diary date changed during generation; retry on the new day"
             )
-        body = body[: config["summary_chars"]]
-        if gap:
-            body = "[覆盖缺口：部分原始消息已滚动淘汰]\n" + body
         through = selected[-1]["seq"]
         for row in pending:
             if row["seq"] <= through:
@@ -183,10 +201,16 @@ class Summarizer:
             through = row["seq"]
         count = next(row["human_count"] for row in pending if row["seq"] == through)
         await self.storage.commit_summary(
-            session["scope"], day, body, through, count, now.timestamp()
+            session["scope"],
+            day,
+            changes,
+            through,
+            count,
+            committed_at.timestamp(),
+            coverage_gap=gap or clipped,
         )
         self.log.debug(
-            "summary.output", body=body, through_seq=through, human_count=count
+            "summary.output", changes=changes, through_seq=through, human_count=count
         )
         self.log.info(
             "summary.complete",
@@ -195,5 +219,7 @@ class Summarizer:
             else f"{session['platform']}:GroupMessage:{session['group_id']}",
             message_count=len(selected),
             context_count=len(payload["messages"]),
+            added_topics=sum(change["action"] == "add" for change in changes),
+            updated_topics=sum(change["action"] == "update" for change in changes),
             duration_seconds=round(perf_counter() - started, 3),
         )

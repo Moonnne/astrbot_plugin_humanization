@@ -68,7 +68,7 @@ async def test_existing_command_records_are_not_read_by_context_or_summary(
     scope = plugin.adapter.snapshot(Event()).scope
     context = await plugin.prompts.context(scope)
     assert "private command" not in context
-    generate = AsyncMock(return_value="clean diary")
+    generate = AsyncMock(return_value='{"changes":[]}')
     plugin.summarizer.generate = generate
     await plugin.summarizer.tick()
     state = await plugin.storage.session(scope)

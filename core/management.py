@@ -133,13 +133,15 @@ class Management:
                 data = (
                     await self.runtime.storage.rows(
                         "SELECT (SELECT COUNT(*) FROM messages WHERE scope=?) AS message_count,"
-                        "(SELECT COUNT(*) FROM daily_summaries WHERE scope=?) AS diary_count,"
+                        "(SELECT COUNT(DISTINCT day) FROM diary_topics WHERE scope=?) AS diary_count,"
                         "COALESCE((SELECT human_count-summarized_count FROM sessions WHERE scope=?),0) AS pending_count",
                         (scope, scope, scope),
                     )
                 )[0]
                 diary = await self.runtime.storage.rows(
-                    "SELECT day,through_seq,updated_at FROM daily_summaries WHERE scope=? ORDER BY day DESC LIMIT 1",
+                    "SELECT day,through_seq,updated_at FROM diary_days d WHERE scope=? AND EXISTS "
+                    "(SELECT 1 FROM diary_topics t WHERE t.scope=d.scope AND t.day=d.day) "
+                    "ORDER BY day DESC LIMIT 1",
                     (scope,),
                 )
         settings = self.runtime.settings

@@ -99,12 +99,15 @@ class Settings:
             raise ValueError(
                 "Minimum context count must be an integer within retention"
             )
+        for key in ("diary_context_chars", "summary_output_chars"):
+            if type(r[key]) is not int or r[key] <= 0:
+                raise ValueError(f"{key} must be a positive integer")
         if not 1 <= r["summary_every"] <= r["window"] <= r["retention"]:
             raise ValueError("Require 1 <= summary_every <= window <= retention")
         if not 1 <= self.controller["context_messages"] <= r["retention"]:
             raise ValueError("Context message count must be within retention")
         for values, keys in (
-            (r, ("summary_chars", "context_chars", "summary_timeout")),
+            (r, ("context_chars", "summary_timeout")),
             (self.controller, ("gate_timeout",)),
             (
                 self.proactive,

@@ -92,10 +92,17 @@
         "default": 100,
         "hint": "须满足 触发条数 ≤ 摘要窗口 ≤ 保留条数。积压时从未处理范围开始追赶"
       },
-      "summary_chars": {
+      "diary_context_chars": {
         "type": "int",
-        "description": "每日日记最大字符数",
-        "default": 2400
+        "description": "日记上下文字符预算",
+        "default": 2400,
+        "hint": "各模型读取最近两日日记时，按完整话题共享此预算，优先最近日期及最近更新的话题。不裁剪数据库中的日记；日期和省略提示等元数据另计。"
+      },
+      "summary_output_chars": {
+        "type": "int",
+        "description": "单次日记变更输出字符上限",
+        "default": 6000,
+        "hint": "限制 Recorder 一次返回的完整 JSON 长度。超限或格式错误时不保存、不推进进度，后续重试；不截断内容，不限制每日累计存储长度。"
       },
       "context_chars": {
         "type": "int",

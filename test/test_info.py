@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from diary_helpers import topic_change
 from humanization_test.main import Humanization
 from test_host_contract import consume
 from test_host_contract import plugin as plugin
@@ -66,10 +67,20 @@ async def seed(runtime, private=False, group="123", platform="onebot"):
         datetime.now(runtime.settings.timezone).date() - timedelta(days=1)
     ).isoformat()
     await runtime.storage.commit_summary(
-        message.scope, yesterday, "private older diary", 2, 2, time.time() - 3600
+        message.scope,
+        yesterday,
+        [topic_change("private older diary")],
+        2,
+        2,
+        time.time() - 3600,
     )
     await runtime.storage.commit_summary(
-        message.scope, message.day, "private current diary", 4, 3, time.time()
+        message.scope,
+        message.day,
+        [topic_change("private current diary")],
+        4,
+        3,
+        time.time(),
     )
     return message
 
@@ -81,7 +92,13 @@ async def test_current_scope_info_has_six_ordered_lines_and_never_changes_data(
     message = await seed(named, private)
     before = {
         table: await named.storage.rows(f"SELECT * FROM {table}")
-        for table in ("sessions", "messages", "daily_summaries", "reply_runs")
+        for table in (
+            "sessions",
+            "messages",
+            "diary_days",
+            "diary_topics",
+            "reply_runs",
+        )
     }
     caller = admin_event("/hum info", private=private)
     lines = (await named.admin.info(caller)).splitlines()
@@ -91,13 +108,13 @@ async def test_current_scope_info_has_six_ordered_lines_and_never_changes_data(
         if private
         else "[群聊]测试群 : onebot:GroupMessage:123"
     )
-    assert lines[1] == "聊天记录：500/6（上限/已有条数）"
+    assert lines[1] == "会话数据条目: MAX 500 / NOW 6"
     assert f"{message.day}@seq4（版本生成时间：" in lines[2]
-    assert "日记总数：2" in lines[2] and "摘要进度：50/1" in lines[2]
-    assert lines[3] == "Recorder 模型：RecorderModel（recorder-id）"
-    assert lines[4] == "Controller 模型：ControllerModel（controller-id）"
+    assert "日记总数: 2" in lines[2] and "摘要进度: TAR 100 / NOW 1" in lines[2]
+    assert lines[3] == "Recorder 模型: RecorderModel（recorder-id）"
+    assert lines[4] == "Controller 模型: ControllerModel（controller-id）"
     assert re.fullmatch(
-        r"查询时间：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \+0800", lines[5]
+        r"查询时间: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \+0800", lines[5]
     )
     assert "private source" not in "\n".join(
         lines
@@ -119,7 +136,7 @@ async def test_explicit_group_info_accepts_member_umos_from_any_admin_chat(
     caller = admin_event("/hum info " + umo, private=private_caller, group="456")
     response = await named.admin.info(caller, umo)
     assert response.splitlines()[0] == "[群聊]测试群 : onebot:GroupMessage:123"
-    assert "聊天记录：500/6" in response
+    assert "会话数据条目: MAX 500 / NOW 6" in response
 
 
 async def test_current_member_scope_uses_whole_group_and_member_alias_when_needed(
@@ -141,7 +158,7 @@ async def test_current_member_scope_uses_whole_group_and_member_alias_when_neede
     caller.session.session_id = "43_123"
     response = await named.admin.info(caller)
     assert response.splitlines()[0] == "[群聊]群内名称 : onebot:GroupMessage:123"
-    assert "500/6" in response
+    assert "MAX 500 / NOW 6" in response
 
 
 async def test_explicit_private_and_other_platform_info_use_the_target_scope(named):
@@ -152,7 +169,7 @@ async def test_explicit_private_and_other_platform_info_use_the_target_scope(nam
     assert private.splitlines()[0] == "[私聊]管理员 : onebot:FriendMessage:42"
     response = await named.admin.info(caller, other.umo)
     assert response.splitlines()[0] == "[群聊]群 456 : otherbot:GroupMessage:456"
-    assert "500/6" in response
+    assert "MAX 500 / NOW 6" in response
 
 
 @pytest.mark.parametrize("enabled", [False, True])
@@ -197,8 +214,8 @@ async def test_rolled_rows_and_pending_summary_counts_use_different_units(named)
     named.settings.recorder["retention"] = 4
     await named.storage.trim()
     response = await named.admin.info(admin_event("/hum info"))
-    assert "聊天记录：4/4" in response
-    assert "摘要进度：50/1" in response
+    assert "会话数据条目: MAX 4 / NOW 4" in response
+    assert "摘要进度: TAR 100 / NOW 1" in response
 
 
 async def test_diary_only_scope_is_queryable_after_today_reset(named):
@@ -207,8 +224,8 @@ async def test_diary_only_scope_is_queryable_after_today_reset(named):
     response = await named.admin.info(
         admin_event("/hum info", private=True), message.umo
     )
-    assert "聊天记录：500/0" in response and "日记总数：1" in response
-    assert "摘要进度：50/0" in response and "@seq2" in response
+    assert "会话数据条目: MAX 500 / NOW 0" in response and "日记总数: 1" in response
+    assert "摘要进度: TAR 100 / NOW 0" in response and "@seq2" in response
 
 
 async def test_info_handles_missing_models_and_no_diary_without_inventing_metadata(
@@ -219,9 +236,9 @@ async def test_info_handles_missing_models_and_no_diary_without_inventing_metada
     named.settings.recorder["summary_provider"] = ""
     named.settings.controller["gate_provider"] = "missing-provider"
     response = await named.admin.info(admin_event("/hum info"))
-    assert "现行日记版本：暂无日记；日记总数：0；摘要进度：50/1" in response
-    assert "Recorder 模型：未配置" in response
-    assert "Controller 模型：不可用（missing-provider）" in response
+    assert "日记版本: 暂无日记; 日记总数: 0; 摘要进度: TAR 100 / NOW 1" in response
+    assert "Recorder 模型: 未配置" in response
+    assert "Controller 模型: 不可用（missing-provider）" in response
 
 
 @pytest.mark.parametrize("enabled,admin", [(False, True), (True, False)])

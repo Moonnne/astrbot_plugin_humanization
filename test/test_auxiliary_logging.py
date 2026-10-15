@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from diary_helpers import model_change, topic_change
 from humanization_test.core.controller import controller as controller_module
 from humanization_test.core.recorder import summarizer as summarizer_module
 from test_host_contract import plugin as plugin
@@ -31,14 +32,19 @@ async def test_recorder_completion_reports_scope_actual_rows_and_duration(
         message = managed.adapter.snapshot(event)
         await managed.storage.append(message)
     await managed.storage.commit_summary(
-        message.scope, message.day, "private older diary", 1, 1, time.time()
+        message.scope,
+        message.day,
+        [topic_change("private older diary")],
+        1,
+        1,
+        time.time(),
     )
     clock = SimpleNamespace(now=100)
     monkeypatch.setattr(summarizer_module, "perf_counter", lambda: clock.now)
 
     async def generate(*args, **kwargs):
         clock.now += 2.5
-        return "private updated diary"
+        return model_change("private updated diary", 2)
 
     managed.summarizer.generate = AsyncMock(side_effect=generate)
     await managed.summarizer.tick()
@@ -51,12 +57,14 @@ async def test_recorder_completion_reports_scope_actual_rows_and_duration(
         else "onebot:GroupMessage:123",
         "message_count": 2,
         "context_count": 3,
+        "added_topics": 1,
+        "updated_topics": 0,
         "duration_seconds": 2.5,
     }
     managed.summarizer.generate.assert_awaited_once()
     assert (await managed.storage.session(message.scope))["cursor"] == 3
-    assert (await managed.storage.diaries(message.scope))[-1][
-        "body"
+    assert (await managed.storage.diaries(message.scope))[-1]["topics"][-1][
+        "topic"
     ] == "private updated diary"
     records = [
         call
@@ -105,7 +113,7 @@ async def test_recorder_failure_reports_scope_duration_and_uncommitted_count(
     assert failed["data"]["candidate_count"] == 1
     assert failed["data"]["duration_seconds"] == 3.25
     assert failed["data"]["error_type"] == (
-        "TimeoutError" if failure == "timeout" else "ValueError"
+        "TimeoutError" if failure == "timeout" else "JSONDecodeError"
     )
     assert not any(row["event"] == "summary.complete" for row in rows)
     assert (await managed.storage.session(message.scope))["cursor"] == 0

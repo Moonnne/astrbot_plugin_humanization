@@ -8,6 +8,7 @@ from pathlib import Path
 import aiosqlite
 
 from ..models import Message, ResetTarget
+from .diary import DiaryProtocol
 
 
 class Storage:
@@ -46,19 +47,32 @@ class Storage:
             CREATE UNIQUE INDEX IF NOT EXISTS messages_source ON messages(scope, direction, message_id)
                 WHERE message_id != '';
             CREATE INDEX IF NOT EXISTS messages_recent ON messages(scope, seq);
-            CREATE TABLE IF NOT EXISTS daily_summaries (
-                scope TEXT NOT NULL, day TEXT NOT NULL, body TEXT NOT NULL,
-                through_seq INTEGER NOT NULL, updated_at REAL NOT NULL,
-                sealed INTEGER NOT NULL DEFAULT 0,
+            CREATE TABLE IF NOT EXISTS diary_days (
+                scope TEXT NOT NULL, day TEXT NOT NULL,
+                through_seq INTEGER NOT NULL, created_at REAL NOT NULL,
+                updated_at REAL NOT NULL, sealed INTEGER NOT NULL DEFAULT 0,
+                coverage_gap INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY(scope, day)
             );
+            CREATE TABLE IF NOT EXISTS diary_topics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scope TEXT NOT NULL, day TEXT NOT NULL,
+                topic_at REAL NOT NULL, topic_time TEXT NOT NULL,
+                topic TEXT NOT NULL, interact TEXT NOT NULL,
+                reply TEXT NOT NULL, reaction TEXT NOT NULL,
+                first_seq INTEGER NOT NULL, last_seq INTEGER NOT NULL,
+                created_at REAL NOT NULL, updated_at REAL NOT NULL,
+                FOREIGN KEY(scope, day) REFERENCES diary_days(scope, day) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS diary_topics_recent
+                ON diary_topics(scope, day, updated_at DESC, id DESC);
             CREATE TABLE IF NOT EXISTS reply_runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL,
                 started_at REAL NOT NULL, trigger TEXT NOT NULL,
                 status TEXT NOT NULL, sent_parts INTEGER NOT NULL DEFAULT 0,
                 detail TEXT NOT NULL DEFAULT ''
             );
-            PRAGMA user_version=1;
+            PRAGMA user_version=2;
         """)
         # Interrupted sends are not retried: the remote side may already have accepted them.
         await self.db.execute(
@@ -160,56 +174,150 @@ class Storage:
         )
         return list(reversed(rows))
 
-    async def diaries(self, scope: str, limit: int = 2) -> list[dict]:
-        rows = await self.rows(
-            "SELECT * FROM daily_summaries WHERE scope=? ORDER BY day DESC LIMIT ?",
+    async def diaries(
+        self, scope: str, limit: int = 2, *, budget: int | None = None
+    ) -> list[dict]:
+        """Select complete topics and render days without mutating stored entries.
+
+        Args:
+            scope: Conversation identity.
+            limit: Number of recent diary dates to read.
+            budget: Shared topic character budget; None reads all selected topics.
+
+        Returns:
+            Chronological days with structured topics, readable body and omission counts.
+        """
+        days = await self.rows(
+            "SELECT * FROM diary_days d WHERE scope=? AND (coverage_gap=1 OR EXISTS "
+            "(SELECT 1 FROM diary_topics t WHERE t.scope=d.scope AND t.day=d.day)) "
+            "ORDER BY day DESC LIMIT ?",
             (scope, limit),
         )
-        return list(reversed(rows))
+        for day in days:
+            topics = await self.rows(
+                "SELECT id,topic_at,topic_time,topic,interact,reply,reaction,first_seq,last_seq "
+                "FROM diary_topics WHERE scope=? AND day=? ORDER BY updated_at DESC,id DESC",
+                (scope, day["day"]),
+            )
+            selected = []
+            for topic in topics:
+                topic["interact"] = json.loads(topic["interact"])
+                cost = max(
+                    len(json.dumps(topic, ensure_ascii=False, separators=(",", ":"))),
+                    len(DiaryProtocol.render_topic(topic)),
+                )
+                if budget is not None:
+                    if cost > budget:
+                        continue
+                    budget -= cost
+                selected.append(topic)
+            selected.sort(key=lambda topic: (topic["topic_at"], topic["id"]))
+            day["topics"] = selected
+            day["omitted_topics"] = len(topics) - len(selected)
+            parts = [f"# {day['day']}"]
+            if day["coverage_gap"]:
+                parts.append(
+                    "[Coverage]覆盖缺口：部分原始消息已滚动淘汰或输入内容截断。"
+                )
+            if day["omitted_topics"]:
+                parts.append(
+                    f"[Context]另有 {day['omitted_topics']} 个话题未展示，不代表不存在。"
+                )
+            parts.extend(DiaryProtocol.render_topic(topic) for topic in selected)
+            day["body"] = "\n\n".join(parts)
+        return list(reversed(days))
 
     async def commit_summary(
         self,
         scope: str,
         day: str,
-        body: str,
+        changes: list[dict],
         through: int,
         human_count: int,
         now: float,
+        *,
+        coverage_gap: bool = False,
     ):
+        """Commit validated topic changes and progress as one transaction.
+
+        Args:
+            scope: Conversation identity, also checked for every update.
+            day: Writable diary date.
+            changes: Validated topic additions or partial updates.
+            through: Last processed sequence, including deliberately ignored messages.
+            human_count: Corresponding incoming message counter.
+            now: Commit timestamp.
+            coverage_gap: Whether missing or clipped input was observed in this batch.
+        """
         async with self.lock:
             sealed = await self.rows(
-                "SELECT sealed FROM daily_summaries WHERE scope=? AND day=?",
-                (scope, day),
+                "SELECT sealed FROM diary_days WHERE scope=? AND day=?", (scope, day)
             )
             if sealed and sealed[0]["sealed"]:
                 raise ValueError("Cannot rewrite a sealed diary")
             try:
                 await self.db.execute(
-                    "UPDATE daily_summaries SET sealed=1 WHERE scope=? AND day<?",
+                    "UPDATE diary_days SET sealed=1 WHERE scope=? AND day<?",
                     (scope, day),
                 )
                 await self.db.execute(
-                    "INSERT INTO daily_summaries VALUES(?,?,?,?,?,0) ON CONFLICT(scope,day) DO UPDATE SET "
-                    "body=excluded.body,through_seq=excluded.through_seq,updated_at=excluded.updated_at "
-                    "WHERE daily_summaries.sealed=0",
-                    (scope, day, body, through, now),
+                    "INSERT INTO diary_days(scope,day,through_seq,created_at,updated_at,coverage_gap) "
+                    "VALUES(?,?,?,?,?,?) ON CONFLICT(scope,day) DO UPDATE SET "
+                    "through_seq=excluded.through_seq,updated_at=excluded.updated_at,"
+                    "coverage_gap=MAX(diary_days.coverage_gap,excluded.coverage_gap)",
+                    (scope, day, through, now, now, coverage_gap),
                 )
+                for change in changes:
+                    values = {
+                        key: json.dumps(value, ensure_ascii=False)
+                        if key == "interact"
+                        else value
+                        for key, value in change.items()
+                        if key
+                        in DiaryProtocol.fields
+                        | {"first_seq", "last_seq", "topic_at", "topic_time"}
+                    }
+                    if change["action"] == "add":
+                        values.update(
+                            scope=scope, day=day, created_at=now, updated_at=now
+                        )
+                        columns = ",".join(values)
+                        placeholders = ",".join(f":{key}" for key in values)
+                        await self.db.execute(
+                            f"INSERT INTO diary_topics({columns}) VALUES({placeholders})",
+                            values,
+                        )
+                    else:
+                        # A correction preserves the topic's first time and prior source extent.
+                        first = values.pop("first_seq")
+                        last = values.pop("last_seq")
+                        values["updated_at"] = now
+                        assignments = ",".join(f"{key}=?" for key in values)
+                        result = await self.db.execute(
+                            f"UPDATE diary_topics SET {assignments},first_seq=MIN(first_seq,?),"
+                            "last_seq=MAX(last_seq,?) WHERE id=? AND scope=? AND day=?",
+                            (*values.values(), first, last, change["id"], scope, day),
+                        )
+                        if result.rowcount != 1:
+                            raise ValueError(
+                                "Diary update target no longer exists in this day"
+                            )
                 await self.db.execute(
                     "UPDATE sessions SET cursor=?,summarized_count=? WHERE scope=?",
                     (through, human_count, scope),
                 )
                 await self.db.commit()
-                if self.log:
-                    self.log.debug(
-                        "database.summary.commit",
-                        scope=scope,
-                        day=day,
-                        through_seq=through,
-                        body=body,
-                    )
             except BaseException:
                 await self.db.rollback()
                 raise
+        if self.log:
+            self.log.debug(
+                "database.summary.commit",
+                scope=scope,
+                day=day,
+                changes=changes,
+                through_seq=through,
+            )
 
     async def update_session(self, scope: str, **values):
         allowed = {
@@ -236,7 +344,7 @@ class Storage:
     async def seal_before(self, day: str):
         async with self.lock:
             await self.db.execute(
-                "UPDATE daily_summaries SET sealed=1 WHERE day<? AND sealed=0", (day,)
+                "UPDATE diary_days SET sealed=1 WHERE day<? AND sealed=0", (day,)
             )
             await self.db.commit()
 
@@ -299,11 +407,11 @@ class Storage:
                 await self.db.execute("DELETE FROM reply_runs WHERE scope=?", (scope,))
                 if day is None:
                     await self.db.execute(
-                        "DELETE FROM daily_summaries WHERE scope=?", (scope,)
+                        "DELETE FROM diary_days WHERE scope=?", (scope,)
                     )
                 else:
                     await self.db.execute(
-                        "DELETE FROM daily_summaries WHERE scope=? AND day=?",
+                        "DELETE FROM diary_days WHERE scope=? AND day=?",
                         (scope, day),
                     )
                 await self.db.execute("DELETE FROM sessions WHERE scope=?", (scope,))
@@ -330,7 +438,7 @@ class Storage:
             for row in await self.rows("SELECT * FROM sessions")
         ]
         for row in await self.rows(
-            "SELECT DISTINCT scope FROM daily_summaries WHERE scope NOT IN (SELECT scope FROM sessions)"
+            "SELECT DISTINCT scope FROM diary_days WHERE scope NOT IN (SELECT scope FROM sessions)"
         ):
             platform, self_id, kind, sid = json.loads(row["scope"])
             private = kind == "private"
@@ -350,7 +458,7 @@ class Storage:
         """Delete every plugin row atomically, keeping the database file and schema."""
         async with self.lock:
             try:
-                for table in ("messages", "reply_runs", "daily_summaries", "sessions"):
+                for table in ("messages", "reply_runs", "diary_days", "sessions"):
                     await self.db.execute(f"DELETE FROM {table}")
                 await self.db.commit()
             except BaseException:
