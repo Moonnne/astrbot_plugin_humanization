@@ -224,6 +224,22 @@ class AstrBotAdapter:
         ).lstrip()
         return self.settings.is_command_text(raw)
 
+    @staticmethod
+    def suppress_empty_mention(event):
+        """Keep controlled input out of the host's separate empty-mention Agent."""
+        handlers = event.get_extra("activated_handlers")
+        if handlers:
+            # Mutate the current event's list before its next handler executes.
+            # Do not change the registry, native message recorder or command waiters.
+            handlers[:] = [
+                handler
+                for handler in handlers
+                if not (
+                    handler.handler_module_path == "astrbot.builtin_stars.astrbot.main"
+                    and handler.handler_name == "handle_empty_mention"
+                )
+            ]
+
     def filter_command_quote(self, event, request):
         """Remove command quotations from this turn's additional input.
 
@@ -385,6 +401,12 @@ class AstrBotAdapter:
                 provider_settings=cfg["provider_settings"],
             ),
         )
+        if not request.prompt and not (
+            request.image_urls or request.audio_urls or request.extra_user_content_parts
+        ):
+            # The native builder rejects empty input before request hooks run.
+            # Preserve a bare mention/wake prefix without inventing a question.
+            request.prompt = self.snapshot(event).text
         return request
 
     @staticmethod

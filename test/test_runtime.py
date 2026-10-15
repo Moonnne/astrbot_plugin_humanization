@@ -98,7 +98,7 @@ def test_nonnegative_log_size_limits_are_valid(config, limit):
 
 @pytest.mark.parametrize(
     "text",
-    ["a$$b", "$a", "a$", "a\nb", "a\\nb", "**hello**", "（点头）好", "好😀", "a$b$c$d"],
+    ["a$$b", "$a", "a$", "a\nb", "a\\nb", "**hello**", "（点头）好", "a$b$c$d"],
 )
 def test_protocol_rejects_ambiguous_output(text):
     with pytest.raises(ValueError):
@@ -107,6 +107,48 @@ def test_protocol_rejects_ambiguous_output(text):
 
 def test_protocol_normalizes_bubbles():
     assert OutputProtocol.parse(" 没有。 $ 你还好吗？ ") == ["没有", "你还好吗？"]
+
+
+@pytest.mark.parametrize(
+    ("text", "bubbles"),
+    [
+        ("知道了😑", ["知道了😑"]),
+        ("没事。 $ 你继续。 🙂 ", ["没事", "你继续🙂"]),
+        ("行👍🏻", ["行👍🏻"]),
+        ("还在写代码👩‍💻", ["还在写代码👩‍💻"]),
+        ("谢了❤️", ["谢了❤️"]),
+        ("中国🇨🇳", ["中国🇨🇳"]),
+        ("选这个1️⃣", ["选这个1️⃣"]),
+    ],
+)
+def test_protocol_preserves_one_trailing_emoji(text, bubbles):
+    assert OutputProtocol.parse(text) == bubbles
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "😀",
+        "。😀",
+        "😀好",
+        "好😀啊",
+        "好😀。",
+        "好😀😀",
+        "好‼🙂",
+        "好↔🙂",
+        "好😀$再见",
+        "好😀$再见😑",
+        "好$😀",
+        "好\n😀",
+        "好🏽",
+        "好\u200d",
+        "好\ufe0f",
+        "选1️⃣这个",
+    ],
+)
+def test_protocol_rejects_misplaced_or_standalone_emoji(text):
+    with pytest.raises(ValueError):
+        OutputProtocol.parse(text)
 
 
 async def test_retention_per_group_dedup_and_concurrent_append(storage):

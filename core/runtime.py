@@ -169,14 +169,17 @@ class Runtime:
                 text=event.message_str,
             )
             event.set_extra("humanization_command", command)
-            if (
-                not command
-                and self.settings.controller["enabled"]
-                and await self.adapter.can_reply(event)
-            ):
+            if not command and self.settings.controller["enabled"]:
+                # Owning the trigger and being allowed to generate are separate.
+                # Denial must not reopen the host's default @/wake reply path.
                 event.should_call_llm(True)
-                event.set_extra("humanization_claimed", True)
-                self.log.debug("message.claimed", default_llm_suppressed=True)
+                permitted = await self.adapter.can_reply(event)
+                event.set_extra("humanization_claimed", permitted)
+                self.log.debug(
+                    "message.claimed",
+                    default_llm_suppressed=True,
+                    reply_permitted=permitted,
+                )
             if command and self.settings.recorder["filter_commands"]:
                 # Command handlers still run; unmatched prefixes must not fall through to LLM.
                 event.should_call_llm(True)
@@ -466,6 +469,24 @@ class Runtime:
     async def inject(self, event, request):
         turn = event.get_extra("humanization_turn")
         if not turn:
+            if (
+                self.settings.recorder["enabled"]
+                and self.settings.controller["enabled"]
+                and ScopeFilter().filter(event, {})
+                and not event.get_extra("humanization_command")
+                and not self.adapter.is_command(event)
+            ):
+                # A native request can arrive without the observation handler.
+                message = event.get_extra(
+                    "humanization_message"
+                ) or self.adapter.snapshot(event)
+                if not await self.ready_context(message.scope):
+                    self.log.info(
+                        "reply.blocked",
+                        reason="minimum_context",
+                        conversation=self.log.identity(message.scope),
+                    )
+                    event.stop_event()
             return
         message = turn["message"]
         self.adapter.filter_command_quote(event, request)

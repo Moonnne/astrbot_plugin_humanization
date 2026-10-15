@@ -165,6 +165,23 @@ async def test_agent_finishes_before_replay_and_native_quote_prefix_hooks_surviv
     ] == "processed"
 
 
+async def test_trailing_emoji_survives_native_replay_without_format_repair(
+    plugin, native
+):
+    plugin.adapter.generate = AsyncMock()
+    event = Event(direct=True)
+
+    async def agent(event):
+        async for result in native.answer(event, text="没有。$你继续😑"):
+            yield result
+
+    await native.run(event, agent)
+    assert [chain.get_plain_text() for chain in event.sent] == ["没有", "你继续😑"]
+    assert len(native.hooks) == 2
+    plugin.adapter.generate.assert_not_awaited()
+    assert event.get_extra("humanization_turn") is None
+
+
 @pytest.mark.parametrize("mode", ["quote", "tts", "t2i", "segments", "tool_notice"])
 async def test_scheduled_event_keeps_native_decorators_and_completion_hooks(
     plugin, native, monkeypatch, mode

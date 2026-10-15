@@ -120,6 +120,11 @@ class Humanization(Star):
             yield event.plain_result(text)
         event.stop_event()
 
+    @filter.custom_filter(ScopeFilter, priority=maxsize)
+    async def prepare_input(self, event: AstrMessageEvent):
+        if self.runtime.settings.controller["enabled"]:
+            self.runtime.adapter.suppress_empty_mention(event)
+
     @filter.custom_filter(ScopeFilter, priority=10000)
     async def observe(self, event: AstrMessageEvent):
         async with aclosing(self.runtime.observe(event)) as generator:
