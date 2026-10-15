@@ -1,6 +1,7 @@
 """Humanization: bounded chat awareness and controlled native Agent replies."""
 
 import asyncio
+import json
 import time
 import uuid
 from contextlib import aclosing
@@ -221,17 +222,17 @@ class Runtime:
                 yield request
 
     async def ready_context(self, scope, through_seq=None):
-        """Gate replies by the Recorder's currently retained message rows.
+        """Gate group replies by retained Recorder rows, allowing private chats.
 
         Args:
             scope: Canonical group or private-chat scope.
             through_seq: Optional submitted batch cutoff, excluding newer inputs.
 
         Returns:
-            Whether the initial observation period has completed.
+            Whether group observation is sufficient or the chat is private.
         """
         cfg = self.settings.recorder
-        if not cfg["minimum_context_enabled"]:
+        if not cfg["minimum_context_enabled"] or json.loads(scope)[2] == "private":
             return True
         if through_seq is None:
             rows = await self.storage.rows(
@@ -454,7 +455,6 @@ class Runtime:
         context = await self.prompts.context(
             message.scope,
             message.message_id,
-            for_llm=True,
             through_seq=event.get_extra("humanization_scheduled")["ticket"].sequence
             if event.get_extra("humanization_scheduled")
             else None,

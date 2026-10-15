@@ -131,14 +131,8 @@ class Settings:
             for prefix in self.recorder["command_prefixes"]
         )
 
-    def is_command_record(self, row: dict, for_llm: bool = False) -> bool:
-        if (
-            not (
-                self.recorder["filter_commands"]
-                or (for_llm and self.recorder["filter_llm_commands"])
-            )
-            or row["direction"] != "in"
-        ):
+    def is_command_record(self, row: dict) -> bool:
+        if not self.recorder["filter_commands"] or row["direction"] != "in":
             return False
         text = "".join(
             part["text"]

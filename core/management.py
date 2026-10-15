@@ -178,11 +178,11 @@ class Management:
         return "\n".join(
             (
                 heading,
-                f"聊天记录：{settings.recorder['retention']}/{data['message_count']}（上限/已有条数）",
-                f"现行日记版本：{version}；日记总数：{data['diary_count']}；摘要进度：{settings.recorder['summary_every']}/{data['pending_count']}（触发条数/待总结新消息）",
-                f"Recorder 模型：{models[0]}",
-                f"Controller 模型：{models[1]}",
-                f"查询时间：{now}",
+                f"会话数据条目: MAX {settings.recorder['retention']} / NOW {data['message_count']}",
+                f"日记版本: {version}; 日记总数: {data['diary_count']}; 摘要进度: TAR {settings.recorder['summary_every']} / NOW {data['pending_count']}",
+                f"Recorder 模型: {models[0]}",
+                f"Controller 模型: {models[1]}",
+                f"查询时间: {now}",
             )
         )
 

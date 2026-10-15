@@ -1,4 +1,4 @@
-"""Request-only command filtering and cache-friendly auxiliary inputs."""
+"""Unified command filtering and cache-friendly auxiliary inputs."""
 
 import asyncio
 import copy
@@ -34,7 +34,7 @@ from astrbot.core.star.star_handler import EventType, star_handlers_registry
 async def test_native_writer_preserves_commands_excluded_from_inference(
     plugin, monkeypatch, enabled, compression
 ):
-    plugin.settings.recorder["filter_llm_commands"] = enabled
+    plugin.settings.recorder["filter_commands"] = enabled
     history = [
         {"role": "user", "content": "old ordinary discussion " * 250},
         {"role": "assistant", "content": "old ordinary response"},
@@ -157,13 +157,21 @@ async def test_native_writer_preserves_commands_excluded_from_inference(
     assert counters[0]["cache_ratio"] == 0.5
 
 
-async def test_default_keeps_native_history_and_command_quote(plugin):
-    assert not plugin.settings.recorder["filter_llm_commands"]
+async def test_default_filters_command_recording_and_quote(plugin):
+    assert plugin.settings.recorder["filter_commands"] is True
+    await consume(plugin.observe(Event("/status secret", message_id="command")))
+    assert not await plugin.storage.rows("SELECT * FROM messages")
     event = Event()
     event.message_obj.message.append(
         Reply(id="command", chain=[Plain("/status secret")])
     )
     request = ProviderRequest(extra_user_content_parts=[])
+    request.extra_user_content_parts.append(
+        TextPart(text="<Quoted Message>\n/status secret")
+    )
+    plugin.adapter.filter_command_quote(event, request)
+    assert request.extra_user_content_parts == []
+    plugin.settings.recorder["filter_commands"] = False
     request.extra_user_content_parts.append(
         TextPart(text="<Quoted Message>\n/status secret")
     )
@@ -367,13 +375,15 @@ async def test_summary_diary_changes_do_not_change_message_prefix(plugin):
     ]
 
 
-async def test_llm_filter_also_excludes_recorded_command_observations(plugin):
-    plugin.settings.recorder.update(filter_commands=False, filter_llm_commands=True)
+async def test_unified_filter_excludes_existing_command_observations(plugin):
+    plugin.settings.recorder["filter_commands"] = False
     event = Event("/status secret command")
     await consume(plugin.observe(event))
     scope = plugin.adapter.snapshot(event).scope
     assert "secret command" in await plugin.prompts.context(scope)
-    assert "secret command" not in await plugin.prompts.context(scope, for_llm=True)
+    plugin.settings.recorder["filter_commands"] = True
+    assert "secret command" not in await plugin.prompts.context(scope)
+    assert "secret command" in (await plugin.storage.recent(scope, 1))[0]["text"]
 
 
 async def test_summary_overlap_reuses_previous_message_prefix(plugin):
@@ -399,7 +409,7 @@ async def test_summary_overlap_reuses_previous_message_prefix(plugin):
 
 
 async def test_abort_restores_commands_before_native_save(plugin):
-    plugin.settings.recorder["filter_llm_commands"] = True
+    assert plugin.settings.recorder["filter_commands"] is True
     event = Event()
     event.set_extra("humanization_turn", {"phase": "agent"})
     original = [

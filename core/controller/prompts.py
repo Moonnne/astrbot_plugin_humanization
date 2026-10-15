@@ -56,7 +56,6 @@ class Prompts:
         self,
         scope: str,
         exclude_id: str = "",
-        for_llm: bool = False,
         through_seq: int | None = None,
     ) -> str:
         if through_seq is None:
@@ -79,7 +78,7 @@ class Prompts:
         messages = []
         remaining = self.settings.recorder["context_chars"]
         for row in reversed(rows):
-            if self.settings.is_command_record(row, for_llm=for_llm):
+            if self.settings.is_command_record(row):
                 continue
             if (
                 exclude_id

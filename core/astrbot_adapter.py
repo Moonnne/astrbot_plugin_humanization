@@ -231,7 +231,7 @@ class AstrBotAdapter:
             event: Incoming non-command event supplying any quoted message.
             request: Native request retaining its original conversation history.
         """
-        if not self.settings.recorder["filter_llm_commands"]:
+        if not self.settings.recorder["filter_commands"]:
             return
         for part in event.get_messages():
             if not isinstance(part, Reply):
@@ -268,7 +268,7 @@ class AstrBotAdapter:
         if runner is not None:
             turn["usage_runner"] = runner
             turn["usage_previous"] = TokenUsage()
-        if not self.settings.recorder["filter_llm_commands"]:
+        if not self.settings.recorder["filter_commands"]:
             return
         original = run_context.messages
         retained = []

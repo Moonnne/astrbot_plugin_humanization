@@ -98,7 +98,7 @@ async def test_threshold_counts_retained_recorder_rows_not_a_lifetime_counter(ma
     assert await managed.ready_context(message.scope)
 
 
-async def test_warmup_shares_group_rows_and_keeps_private_chats_independent(managed):
+async def test_warmup_shares_group_rows_and_exempts_private_chats(managed):
     managed.settings.recorder.update(
         minimum_context_enabled=True, minimum_context_messages=2
     )
@@ -111,14 +111,51 @@ async def test_warmup_shares_group_rows_and_keeps_private_chats_independent(mana
     assert await managed.ready_context(group.scope)
     private = admin_event("chat", private=True)
     await consume(managed.observe(private))
-    assert not await managed.ready_context(
-        private.get_extra("humanization_message").scope
-    )
+    assert await managed.ready_context(private.get_extra("humanization_message").scope)
     await managed.reset_scope(group, None)
     assert not await managed.ready_context(group.scope)
     fresh = Event(message_id="fresh")
     await consume(managed.observe(fresh))
     assert not await managed.ready_context(group.scope)
+
+
+@pytest.mark.parametrize("mode", ["probability", "scheduled"])
+async def test_private_reply_reaches_main_model_below_group_threshold(managed, mode):
+    managed.settings.recorder["minimum_context_enabled"] = True
+    managed.settings.scope["all_sessions"] = True
+    managed.settings.controller["mode"] = mode
+    managed.controller.decide = AsyncMock(return_value=Decision(True, "reply"))
+    managed.adapter.request = AsyncMock(return_value=ProviderRequest(prompt="hello"))
+    queue = asyncio.Queue()
+    managed.context.get_event_queue = lambda: queue
+    clock = Clock(time.time())
+    managed.scheduler.clock = clock
+    managed.scheduler.call_later = clock.later
+    event = admin_event("hello", private=True)
+    event.role = "member"
+    await consume(managed.observe(event))
+    message = event.get_extra("humanization_message")
+    assert len(await managed.storage.recent(message.scope, 100)) == 1
+    assert managed.settings.recorder["minimum_context_messages"] == 50
+
+    if mode == "scheduled":
+        assert await consume(managed.participate(event)) == []
+        clock.advance(60)
+        generator = managed.observe(queue.get_nowait())
+    else:
+        generator = managed.participate(event)
+    try:
+        assert isinstance(await anext(generator), ProviderRequest)
+        managed.controller.decide.assert_awaited_once()
+        managed.adapter.request.assert_awaited_once()
+    finally:
+        await generator.aclose()
+
+    group = Event(message_id="group-first")
+    await consume(managed.observe(group))
+    assert await consume(managed.participate(group)) == []
+    managed.controller.decide.assert_awaited_once()
+    managed.adapter.request.assert_awaited_once()
 
 
 @pytest.mark.parametrize("count", [0, -1, True, 1.5, 501])

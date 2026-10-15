@@ -85,7 +85,7 @@ async def test_native_command_history_and_quote_are_filtered_without_changing_st
     plugin,
 ):
     plugin.settings.recorder["command_prefixes"] = ["/", "!"]
-    plugin.settings.recorder["filter_llm_commands"] = True
+    assert plugin.settings.recorder["filter_commands"] is True
     history = [
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "normal reply"},
@@ -130,7 +130,7 @@ async def test_native_command_history_and_quote_are_filtered_without_changing_st
     assert len(run_context.messages) == len(history)
     assert "command_history" not in event.get_extra("humanization_turn")
     assert stored == json.dumps(history)
-    plugin.settings.recorder["filter_llm_commands"] = False
+    plugin.settings.recorder["filter_commands"] = False
     request.contexts = json.loads(stored)
     plugin.adapter.filter_command_quote(event, request)
     assert request.contexts == history
@@ -292,6 +292,8 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
     assert config["controller"]["force_at"] is True
     assert next(reversed(schema)) == "danger"
     assert list(schema["recorder"]["items"])[:2] == ["enabled", "summary_provider"]
+    assert config["recorder"]["filter_commands"] is True
+    assert "filter_llm_commands" not in schema["recorder"]["items"]
     assert list(schema["controller"]["items"])[:2] == ["enabled", "gate_provider"]
     for name in ("wait_min_seconds", "wait_max_seconds"):
         assert schema["controller"]["items"][name]["condition"] == {"mode": "scheduled"}

@@ -51,21 +51,15 @@
         "type": "bool",
         "description": "过滤指令模式对话",
         "default": true,
-        "hint": "已匹配的插件指令和指定指令前缀不入库，不计入摘要触发。命令插件正常执行。"
-      },
-      "filter_llm_commands": {
-        "type": "bool",
-        "description": "过滤LLM指令消息与回复",
-        "default": false,
-        "hint": "仅控制 Humanization 接管的主模型输入。开启后过滤仍可按额外指令前缀识别的原生历史指令回合及指令引用，保存时保留原生指令记录；关闭时主模型可读取原生指令历史。与上方 Recorder 入库过滤独立；不会重写已有日记。"
+        "hint": "统一过滤插件入库与 Humanization 接管的 LLM 输入：已匹配的插件指令和指定前缀消息不写入插件数据库、不计入摘要；上下文过滤可按前缀识别的原生指令回合（含回复和工具结果）及指令引用。原生保存前恢复被临时取出的指令回合，原生群消息记录照常保留。命令插件正常执行；不会重写已有日记。"
       },
       "command_prefixes": {
         "type": "list",
-        "description": "额外指令前缀，用于指令触发，应当和Astrbot唤醒词一致",
+        "description": "额外指令前缀",
         "default": [
           "/"
         ],
-        "hint": "补充识别未注册的指令。不应填普通昵称唤醒词。"
+        "hint": "用于指令触发，应当和Astrbot唤醒词一致。可以补充识别未注册的指令。不应填普通昵称唤醒词。"
       },
       "retention": {
         "type": "int",
@@ -74,28 +68,28 @@
       },
       "minimum_context_enabled": {
         "type": "bool",
-        "description": "数据库最低上下文限制",
+        "description": "群聊最低上下文",
         "default": true,
-        "hint": "先记录会话背景，当前会话数据库中的消息达到下方条数后，才允许 Controller 规划和主模型回复。沿用 Recorder 的入库过滤；记录与日记整理继续运行，@／提及必回复和主动发言也遵守此限制。达到阈值只允许评估，不会自动发言。"
+        "hint": "先记录群聊背景，当前群聊数据库中的消息达到下方条数后，才允许 Controller 规划和主模型回复。仅限制群聊，私聊不受限制。沿用 Recorder 的入库过滤；记录与日记整理继续运行，群聊中的 @／提及必回复和主动发言也遵守此限制。达到阈值只允许评估，不会自动发言。"
       },
       "minimum_context_messages": {
         "type": "int",
-        "description": "最低上下文消息条数",
+        "description": "群聊最低上下文消息条数",
         "default": 50,
         "condition": {
           "minimum_context_enabled": true
         },
-        "hint": "默认50条，须为1至保留消息条数之间的整数。检查数据库当前实际保留的记录，包括已记录的机器人气泡；被 Recorder 过滤、去重或滚动删除的消息不计。群内成员共用整个群的记录，私聊独立检查。实际模型观察窗口另行配置。"
+        "hint": "默认50条，须为1至保留消息条数之间的整数。检查群聊数据库当前实际保留的记录，包括已记录的机器人气泡；被 Recorder 过滤、去重或滚动删除的消息不计。群内成员共用整个群的记录，私聊不检查此门槛。实际模型观察窗口另行配置。"
       },
       "window": {
         "type": "int",
         "description": "单次摘要最多读取消息条数",
-        "default": 100
+        "default": 200
       },
       "summary_every": {
         "type": "int",
         "description": "新增多少条用户消息后触发摘要",
-        "default": 50,
+        "default": 100,
         "hint": "须满足 触发条数 ≤ 摘要窗口 ≤ 保留条数。积压时从未处理范围开始追赶"
       },
       "summary_chars": {
@@ -272,7 +266,7 @@
         "type": "int",
         "description": "普通回复冷却（秒）",
         "default": 20,
-        "hint": "两种模式共用。普通回复遵守冷却，命中已开启的必回复可绕过；最低上下文限制仍适用。"
+        "hint": "两种模式共用。普通回复遵守冷却，命中已开启的必回复可绕过；群聊最低上下文限制仍适用，私聊不受此门槛限制。"
       },
       "debounce_seconds": {
         "type": "float",
