@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from controller_helpers import plan_json
 from diary_helpers import model_change, topic_change
 from humanization_test.core.controller import controller as controller_module
 from humanization_test.core.recorder import summarizer as summarizer_module
@@ -150,22 +151,28 @@ async def test_controller_logs_existing_plan_without_changing_protocol_or_intent
 
     async def generate(*args, **kwargs):
         clock.now += 1.125
-        return json.dumps({"action": action, "intent": intent})
+        return plan_json(
+            reply=action == "reply", target=message.message_id, guidance=intent
+        )
 
     managed.controller.generate = AsyncMock(side_effect=generate)
     decision = await managed.controller.decide(message, False, False)
-    assert decision.reply is (action == "reply") and decision.intent == intent
+    assert decision.reply is (action == "reply") and decision.intent == (
+        intent if action == "reply" else ""
+    )
     managed.controller.generate.assert_awaited_once()
     system = managed.controller.generate.call_args.args[1]
     assert system.startswith(managed.prompts.text["gate"])
-    assert "emotion" not in system
+    assert "emotion" in system
     await managed.log.flush()
     rows = entries(managed.log.directory / ("dev.log" if debug else "runtime.log"))
     complete = next(row for row in rows if row["event"] == "gate.complete")
     assert complete["data"] == {
         "conversation": "onebot:GroupMessage:123",
         "action": action,
-        "intent": intent[:120],
+        "emotion": "NEUTRAL",
+        "intensity": 0,
+        "participation": "respond" if action == "reply" else None,
         "duration_seconds": 1.125,
     }
     records = [
@@ -181,7 +188,7 @@ async def test_controller_logs_existing_plan_without_changing_protocol_or_intent
     else:
         assert not managed.log.console.mock_calls
         original = next(row for row in rows if row["event"] == "gate.decision")
-        assert original["data"]["intent"] == intent
+        assert original["data"]["decision"] == decision.planning
 
 
 @pytest.mark.parametrize("debug", [False, True])

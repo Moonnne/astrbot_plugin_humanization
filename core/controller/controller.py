@@ -6,7 +6,8 @@ import random
 from datetime import datetime
 from time import perf_counter
 
-from ..models import Decision
+from ...models.decision import Decision
+from .protocol import ControllerProtocol
 
 
 class Controller:
@@ -38,12 +39,14 @@ class Controller:
             if scheduled is not None
             else self.settings.forced(direct_at, mentioned)
         )
-        if not idle and forced:
-            self.log.debug("gate.direct_reply", reason="force_at_or_name")
-            return Decision(
-                True, "回应这条明确叫你的消息；仍可按角色意愿拒绝任务", "forced"
-            )
-        if now.timestamp() - session["last_reply"] < cfg["cooldown_seconds"]:
+        required = forced and not idle
+        fallback = Decision(
+            True, "回应这条明确叫你的消息；仍可按角色意愿拒绝任务", "forced"
+        )
+        if (
+            not required
+            and now.timestamp() - session["last_reply"] < cfg["cooldown_seconds"]
+        ):
             self.log.debug("gate.wait", reason="cooldown")
             return Decision(False, reason="cooldown")
         activity = self.settings.effective_activity(
@@ -51,7 +54,11 @@ class Controller:
         )
         if idle:
             activity *= self.settings.proactive["probability"]
-        sample = self.random.random() if cfg["mode"] == "probability" else None
+        sample = (
+            self.random.random()
+            if not required and cfg["mode"] == "probability"
+            else None
+        )
         self.log.debug(
             "gate.check",
             activity=activity,
@@ -60,31 +67,17 @@ class Controller:
             idle=idle,
             direct_at=direct_at,
             mentioned=mentioned,
+            reply_required=required,
         )
-        if activity == 0 or (sample is not None and sample >= activity):
+        if not required and (
+            activity == 0 or (sample is not None and sample >= activity)
+        ):
             self.log.debug("gate.wait", reason="random_sample")
             return Decision(False, reason="random_sample")
         provider = cfg["gate_provider"]
         if not provider:
-            self.log.debug("gate.wait", reason="no_provider")
-            return Decision(False, reason="no_provider")
-        system = await self.prompts.gate(message.private)
-        context = (
-            await self.prompts.context(message.scope, through_seq=scheduled.sequence)
-            if scheduled is not None
-            else await self.prompts.context(message.scope)
-        )
-        payload = json.dumps(
-            {
-                "context": json.loads(context),
-                "trigger": "idle" if idle else "message",
-                "target": message.message_id,
-                "bot_id": message.self_id,
-                "activity": activity,
-            },
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
+            self.log.debug("gate.wait", reason="no_provider", reply_required=required)
+            return fallback if required else Decision(False, reason="no_provider")
         conversation = (
             message.umo
             if message.private
@@ -92,43 +85,128 @@ class Controller:
         )
         started = perf_counter()
         try:
+            system = await self.prompts.gate(message.private)
+            through = (
+                scheduled.sequence if scheduled is not None else session["last_seq"]
+            )
+            context = json.loads(
+                await self.prompts.context(
+                    message.scope, through_seq=through, for_controller=True
+                )
+            )
+            history = []
+            for row in await self.storage.decisions(message.scope):
+                previous = row["decision"]
+                plan = previous["plan"]
+                history.append(
+                    {
+                        "time": datetime.fromtimestamp(
+                            row["created_at"], self.settings.timezone
+                        ).isoformat(),
+                        "age_seconds": max(0, now.timestamp() - row["created_at"]),
+                        "last_human_at": datetime.fromtimestamp(
+                            row["last_human_at"], self.settings.timezone
+                        ).isoformat(),
+                        "observed_through_seq": row["observed_through_seq"],
+                        "reply": previous["reply"],
+                        "reason": previous["reason"],
+                        "emotion": previous["emotion"],
+                        "outcome": row["outcome"],
+                        "focus": {
+                            "message_id": plan["target_message_id"],
+                            "topic_id": plan["topic_id"],
+                        }
+                        if plan
+                        else None,
+                    }
+                )
+            payload = json.dumps(
+                {
+                    "context": context,
+                    "recent_decisions": history,
+                    "now": now.isoformat(),
+                    "trigger": "idle" if idle else "message",
+                    "target": message.message_id,
+                    "bot_id": message.self_id,
+                    "direct_at": direct_at,
+                    "mentioned": mentioned,
+                    "reply_required": required,
+                    "activity": activity,
+                    "since_last_human_seconds": max(
+                        0, now.timestamp() - session["last_human"]
+                    )
+                    if session["last_human"]
+                    else None,
+                    "since_last_reply_seconds": max(
+                        0, now.timestamp() - session["last_reply"]
+                    )
+                    if session["last_reply"]
+                    else None,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
             async with asyncio.timeout(cfg["gate_timeout"]):
                 raw = await self.generate(
                     provider, system, payload, purpose="controller"
                 )
-            raw = raw.strip()
-            if raw.startswith("```") and raw.endswith("```"):
-                raw = "\n".join(raw.splitlines()[1:-1])
-            result = json.loads(raw)
-            if result["action"] not in ("reply", "wait") or not isinstance(
-                result.get("intent", ""), str
-            ):
-                raise ValueError("Invalid gate decision")
-            self.log.debug(
-                "gate.decision",
-                action=result["action"],
-                intent=result.get("intent", ""),
+            result = ControllerProtocol.parse(raw, context, required)
+            plan = result["plan"]
+            focus = None
+            if plan:
+                focus = {
+                    "message": next(
+                        (
+                            row
+                            for row in context["messages"]
+                            if row["message_id"] == plan["target_message_id"]
+                        ),
+                        None,
+                    ),
+                    "topic": next(
+                        (
+                            row
+                            for row in context["topics"]["items"]
+                            if row["id"] == plan["topic_id"]
+                        ),
+                        None,
+                    ),
+                }
+            record_id = await self.storage.record_decision(
+                message.scope,
+                result,
+                datetime.now(self.settings.timezone).timestamp(),
+                through,
+                session["last_human"],
+                "idle" if idle else "message",
+                required,
             )
+            self.log.debug("gate.decision", decision=result, record_id=record_id)
             self.log.info(
                 "gate.complete",
                 conversation=conversation,
-                action=result["action"],
-                intent=result.get("intent", "")[:120],
+                action="reply" if result["reply"] else "wait",
+                emotion=result["emotion"]["primary"],
+                intensity=result["emotion"]["intensity"],
+                participation=plan["participation"] if plan else None,
                 duration_seconds=round(perf_counter() - started, 3),
             )
             return Decision(
-                result["action"] == "reply",
-                result.get("intent", "")[:500],
-                "reply" if result["action"] == "reply" else "semantic_wait",
+                result["reply"],
+                plan["guidance"] if plan else "",
+                "reply" if result["reply"] else "semantic_wait",
+                result,
+                focus,
+                record_id,
             )
         except Exception:
             self.log.exception(
                 "gate.failed",
                 conversation=conversation,
-                action="wait",
+                action="reply" if required else "wait",
                 duration_seconds=round(perf_counter() - started, 3),
             )
-            return Decision(False, reason="error")
+            return fallback if required else Decision(False, reason="error")
 
     def idle_due(
         self, session: dict, now: datetime, check_schedule: bool = True

@@ -161,10 +161,11 @@ async def test_database_error_rolls_back_topics_day_and_cursor(storage):
     await storage.append(message(1))
     await storage.commit_summary("group", "2026-10-15", [topic_change("old")], 1, 1, 1)
     before = await storage.diaries("group")
-    await storage.db.execute(
-        "CREATE TRIGGER reject_topic BEFORE INSERT ON diary_topics "
-        "WHEN NEW.topic='fail' BEGIN SELECT RAISE(ABORT,'test failure'); END"
-    )
+    async with storage.database.transaction() as tx:
+        await tx.execute(
+            "CREATE TRIGGER reject_topic BEFORE INSERT ON diary_topics "
+            "WHEN NEW.topic='fail' BEGIN SELECT RAISE(ABORT,'test failure'); END"
+        )
     with pytest.raises(sqlite3.IntegrityError):
         await storage.commit_summary(
             "group", "2026-10-16", [topic_change("new"), topic_change("fail")], 2, 2, 2

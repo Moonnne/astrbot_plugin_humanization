@@ -14,11 +14,12 @@ from astrbot.api.message_components import At, Plain
 from astrbot.core.agent.tool import ToolSet
 from astrbot.core.message.message_event_result import ResultContentType
 
+from ..models.delivery import ReplayResult
 from ..utils.output_protocol import OutputProtocol
 from ..utils.plugin_log import PluginLog
 from .astrbot_adapter import AstrBotAdapter, IdleEvent, ScopeFilter
 from .controller.controller import Controller
-from .controller.delivery import Delivery, ReplayResult
+from .controller.delivery import Delivery
 from .controller.prompts import Prompts
 from .controller.scheduler import Scheduler
 from .management import Management, ManagementAccessFilter
@@ -234,16 +235,7 @@ class Runtime:
         cfg = self.settings.recorder
         if not cfg["minimum_context_enabled"] or json.loads(scope)[2] == "private":
             return True
-        if through_seq is None:
-            rows = await self.storage.rows(
-                "SELECT COUNT(*) AS count FROM messages WHERE scope=?", (scope,)
-            )
-        else:
-            rows = await self.storage.rows(
-                "SELECT COUNT(*) AS count FROM messages WHERE scope=? AND seq<=?",
-                (scope, through_seq),
-            )
-        count = rows[0]["count"] if rows else 0
+        count = await self.storage.message_count(scope, through_seq)
         ready = count >= cfg["minimum_context_messages"]
         if not ready:
             self.log.debug(
@@ -284,6 +276,8 @@ class Runtime:
         turn = None
         previous_streaming = event.get_extra("enable_streaming")
         outcome = "skipped"
+        decision = None
+        decision_outcome = "unconfirmed"
         try:
             async with self.log.context("reply"), self.controller.lock(message.scope):
                 if (
@@ -358,6 +352,8 @@ class Runtime:
                     "run": run,
                     "idle": idle,
                     "intent": decision.intent,
+                    "planning": decision.planning,
+                    "focus": decision.focus,
                     "phase": "agent",
                     "outputs": [],
                     "recorded": set(),
@@ -405,6 +401,11 @@ class Runtime:
                         if turn["status"] != "superseded":
                             turn["status"] = "unconfirmed"
                         break
+                decision_outcome = (
+                    turn["status"]
+                    if turn["status"] in {"processed", "unconfirmed", "superseded"}
+                    else "failed"
+                )
                 await self.storage.finish_reply(
                     run, turn["status"], len(turn["recorded"])
                 )
@@ -415,6 +416,9 @@ class Runtime:
                     completed_parts=len(turn["recorded"]),
                 )
         except (asyncio.CancelledError, GeneratorExit):
+            decision_outcome = (
+                "unconfirmed" if turn and turn["recorded"] else "superseded"
+            )
             if run is not None:
                 await self.storage.finish_reply(run, "unknown", len(turn["recorded"]))
                 self.log.info(
@@ -423,10 +427,24 @@ class Runtime:
             raise
         except Exception:
             outcome = "error"
+            decision_outcome = "failed"
             if run is not None:
                 await self.storage.finish_reply(run, "failed", len(turn["recorded"]))
             self.log.exception("reply.failed", run=run)
         finally:
+            if (
+                decision is not None
+                and decision.reply
+                and decision.record_id is not None
+            ):
+                try:
+                    await self.storage.finish_decision(
+                        decision.record_id, decision_outcome
+                    )
+                except Exception:
+                    self.log.exception(
+                        "gate.outcome.failed", record_id=decision.record_id
+                    )
             if scheduled is not None:
                 self.scheduler.complete(
                     scheduled, outcome, bool(turn and turn["recorded"])
@@ -460,7 +478,9 @@ class Runtime:
             else None,
         )
         self.log.info("context.prepare", run=turn["run"], context_chars=len(context))
-        self.adapter.inject_observation(request, context, turn["intent"])
+        self.adapter.inject_observation(
+            request, context, turn["intent"], turn.get("planning"), turn.get("focus")
+        )
         blocked = self.settings.controller["blocked_tools"]
         if request.func_tool and blocked:
             request.func_tool = ToolSet(
@@ -607,9 +627,7 @@ class Runtime:
             await asyncio.sleep(self.settings.proactive["check_minutes"] * 60)
             try:
                 now = datetime.now(self.settings.timezone)
-                for session in await self.storage.rows(
-                    "SELECT * FROM sessions WHERE private=0"
-                ):
+                for session in await self.storage.group_sessions():
                     if (
                         self.resetting_all
                         or session["scope"] in self.summarizer.resetting

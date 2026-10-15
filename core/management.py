@@ -128,22 +128,7 @@ class Management:
         data = {"message_count": 0, "diary_count": 0, "pending_count": 0}
         diary = []
         if scope is not None:
-            # Hold only the DB write lock; a model call never owns this lock.
-            async with self.runtime.storage.lock:
-                data = (
-                    await self.runtime.storage.rows(
-                        "SELECT (SELECT COUNT(*) FROM messages WHERE scope=?) AS message_count,"
-                        "(SELECT COUNT(DISTINCT day) FROM diary_topics WHERE scope=?) AS diary_count,"
-                        "COALESCE((SELECT human_count-summarized_count FROM sessions WHERE scope=?),0) AS pending_count",
-                        (scope, scope, scope),
-                    )
-                )[0]
-                diary = await self.runtime.storage.rows(
-                    "SELECT day,through_seq,updated_at FROM diary_days d WHERE scope=? AND EXISTS "
-                    "(SELECT 1 FROM diary_topics t WHERE t.scope=d.scope AND t.day=d.day) "
-                    "ORDER BY day DESC LIMIT 1",
-                    (scope,),
-                )
+            data, diary = await self.runtime.storage.info(scope)
         settings = self.runtime.settings
         now = datetime.now(settings.timezone).strftime("%Y-%m-%d %H:%M:%S %z")
         if not data["message_count"] and not data["diary_count"]:

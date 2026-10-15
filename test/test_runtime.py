@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock
 import pytest
 from diary_helpers import model_change, topic_change
 from humanization_test.core.controller.controller import Controller
-from humanization_test.core.models import Message
 from humanization_test.core.recorder.storage import Storage
 from humanization_test.core.recorder.summarizer import Summarizer
 from humanization_test.core.settings import Settings
+from humanization_test.models.message import Message
 from humanization_test.utils.output_protocol import OutputProtocol
 
 

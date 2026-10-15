@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from controller_helpers import plan_json
 from humanization_test.core.astrbot_adapter import InternalEventFilter, ScheduledEvent
 from humanization_test.core.controller.scheduler import Scheduler
 from humanization_test.core.settings import Settings
@@ -296,7 +297,7 @@ async def test_runtime_batches_only_new_valid_inputs_and_uses_snapshot_cutoff(pl
     await consume(plugin.observe(Event("/command", message_id="command")))
     await consume(plugin.observe(Event("first", message_id="first")))
     assert len(await plugin.storage.rows("SELECT * FROM messages")) == 1
-    gate = AsyncMock(return_value='{"action":"wait","intent":""}')
+    gate = AsyncMock(return_value=plan_json(reply=False))
     plugin.settings.controller["gate_provider"] = "gate"
     plugin.controller.generate = gate
     assert await consume(plugin.observe(scheduled)) == []
@@ -355,7 +356,7 @@ async def test_queued_cutoff_excludes_inputs_arriving_before_gate_starts(plugin)
     second = Event("future input", message_id="second")
     await consume(plugin.observe(second))
     await consume(plugin.participate(second))
-    generate = AsyncMock(return_value='{"action":"wait","intent":""}')
+    generate = AsyncMock(return_value=plan_json(reply=False))
     plugin.controller.generate = generate
     await consume(plugin.observe(first_event))
     payload = json.loads(generate.call_args.args[2])
@@ -438,7 +439,7 @@ async def test_weight_one_without_force_still_calls_semantic_gate(plugin):
     )
     source = Event(direct=True)
     await consume(plugin.observe(source))
-    generate = AsyncMock(return_value='{"action":"wait","intent":""}')
+    generate = AsyncMock(return_value=plan_json(reply=False))
     plugin.controller.generate = generate
     decision = await plugin.controller.decide(
         source.get_extra("humanization_message"), True, False

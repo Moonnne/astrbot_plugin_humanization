@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock
 import pytest
 from diary_helpers import topic_change
 from humanization_test.core.astrbot_adapter import IdleEvent
-from humanization_test.core.models import Decision
 from humanization_test.core.settings import Settings
 from humanization_test.main import Humanization
+from humanization_test.models.decision import Decision
 from test_host_contract import Event, consume
 from test_host_contract import plugin as plugin
 from test_management import admin_event

@@ -25,21 +25,16 @@ class Summarizer:
         if not self.settings.recorder["summary_provider"]:
             return
         async with self.lock:
-            for session in await self.storage.rows(
-                "SELECT * FROM sessions WHERE last_seq>cursor"
-            ):
+            for session in await self.storage.pending_sessions():
                 if session["scope"] in self.resetting:
                     continue
                 group_umo = f"{session['platform']}:GroupMessage:{session['group_id']}"
                 if not self.settings.selected(session["umo"], group_umo):
                     continue
-                pending = await self.storage.rows(
-                    "SELECT * FROM messages WHERE scope=? AND seq>? ORDER BY seq LIMIT ?",
-                    (
-                        session["scope"],
-                        session["cursor"],
-                        self.settings.recorder["window"],
-                    ),
+                pending = await self.storage.pending_messages(
+                    session["scope"],
+                    session["cursor"],
+                    self.settings.recorder["window"],
                 )
                 if not pending:
                     continue
@@ -133,9 +128,8 @@ class Summarizer:
         # Overlap supplies context without advancing already summarized messages.
         overlap = []
         if len(selected) < config["window"] and size < config["context_chars"]:
-            preceding = await self.storage.rows(
-                "SELECT * FROM messages WHERE scope=? AND seq<=? ORDER BY seq DESC LIMIT ?",
-                (session["scope"], session["cursor"], config["window"] - len(selected)),
+            preceding = await self.storage.preceding_messages(
+                session["scope"], session["cursor"], config["window"] - len(selected)
             )
             for row in preceding:
                 if self.settings.is_command_record(row):

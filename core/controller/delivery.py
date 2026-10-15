@@ -2,27 +2,12 @@
 
 import json
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from datetime import datetime
 
 from astrbot.api.message_components import At, Plain
-from astrbot.core.message.message_event_result import MessageEventResult
 
-
-@dataclass
-class ReplayResult(MessageEventResult):
-    """Retain native prepared parts when RespondStage extracts separate audio.
-
-    The host removes Record parts from the original chain before its completion
-    hook. Observing derive() preserves those parts without replacing transport.
-    """
-
-    prepared: list = field(default_factory=list)
-
-    def derive(self, chain=None):
-        if chain:
-            self.prepared.extend(chain)
-        return super().derive(chain)
+from ...models.delivery import ReplayResult
 
 
 class Delivery:

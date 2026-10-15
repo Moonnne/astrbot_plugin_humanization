@@ -3,9 +3,10 @@
 import json
 import math
 import re
-from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+from ..models.settings import ActivityPeriod
 
 
 def minute_of_day(value: str) -> int:
@@ -19,14 +20,6 @@ def in_period(minute: int, start: int, end: int) -> bool:
     if start == end:
         return True
     return start <= minute < end if start < end else minute >= start or minute < end
-
-
-@dataclass(frozen=True)
-class ActivityPeriod:
-    start: int
-    end: int
-    group: float
-    private: float
 
 
 class Settings:
@@ -66,6 +59,9 @@ class Settings:
                 or limit < 0
             ):
                 raise ValueError("Log size limits must be finite non-negative numbers")
+        for key, minimum in (("context_topics", 0), ("topic_context_chars", 1)):
+            if type(self.controller[key]) is not int or self.controller[key] < minimum:
+                raise ValueError(f"{key} must be an integer >= {minimum}")
         self.timezone = ZoneInfo(self.controller["timezone"])
         self.periods = [
             ActivityPeriod(

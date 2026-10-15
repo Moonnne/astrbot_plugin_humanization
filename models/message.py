@@ -1,4 +1,4 @@
-"""Host-independent records passed between runtime modules."""
+"""Shared data records."""
 
 from dataclasses import dataclass
 
@@ -20,20 +20,3 @@ class Message:
     private: bool
     day: str
     direction: str = "in"
-
-
-@dataclass(frozen=True)
-class ResetTarget:
-    scope: str
-    umo: str
-    platform: str
-    self_id: str
-    group_id: str
-    private: bool
-
-
-@dataclass(frozen=True)
-class Decision:
-    reply: bool
-    intent: str = ""
-    reason: str = ""

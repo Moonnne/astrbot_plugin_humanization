@@ -118,7 +118,7 @@
   },
   "controller": {
     "type": "object",
-    "description": "Controller 回复控制",
+    "description": "Controller 聊天行为规划与控制",
     "items": {
       "enabled": {
         "type": "bool",
@@ -128,10 +128,10 @@
       },
       "gate_provider": {
         "type": "string",
-        "description": "参与门控模型",
+        "description": "聊天行为规划模型",
         "default": "",
         "_special": "select_provider",
-        "hint": "，未选择时普通消息保持安静；命中已开启的必回复选项仍由主模型回复。"
+        "hint": "综合语境规划参与、情绪和表达。未选择时普通消息保持安静；必回复仍交给主模型，不编造情绪。"
       },
       "robot_name": {
         "type": "string",
@@ -163,13 +163,13 @@
         "type": "bool",
         "description": "@ 必回复",
         "default": true,
-        "hint": "命中后绕过普通调度、抽样、语义门控及冷却，仍遵守宿主权限。必回复只表示提交主模型，角色仍可拒绝任务。"
+        "hint": "命中后绕过普通调度、抽样及冷却，仍调用 Controller 规划情绪和表达，且要求回复；规划失败仍提交主模型。遵守宿主权限与群聊最低上下文限制，角色仍可拒绝任务。"
       },
       "force_mention": {
         "type": "bool",
         "description": "提及必回复",
         "default": false,
-        "hint": "命中机器人名称或别名后直接提交主模型，仍可按角色意愿拒绝任务；默认关闭。"
+        "hint": "命中名称或别名后要求回复，并调用 Controller 规划情绪与表达；规划失败仍交给主模型，角色仍可拒绝任务。默认关闭。"
       },
       "timezone": {
         "type": "string",
@@ -301,8 +301,20 @@
       },
       "context_messages": {
         "type": "int",
-        "description": "门控和主模型观察消息条数",
-        "default": 20
+        "description": "Controller 和主模型观察消息条数",
+        "default": 30
+      },
+      "context_topics": {
+        "type": "int",
+        "description": "Controller 读取话题数",
+        "default": 30,
+        "hint": "跨日期选择最近更新的 N 个话题作为候选，0 不读取。受下方字符预算限制，实际可能少于 N；不改变 Recorder 和主模型的常规日记预算。"
+      },
+      "topic_context_chars": {
+        "type": "int",
+        "description": "Controller 话题字符预算",
+        "default": 12000,
+        "hint": "正整数。按完整话题选取，超预算不截断，输入标明省略数量。每会话另外保留最近10条有效决策帮助延续情绪，重启保留，重置会话时清除。"
       },
       "gate_timeout": {
         "type": "int",

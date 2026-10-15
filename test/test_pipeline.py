@@ -203,7 +203,14 @@ async def test_filtered_command_cancels_remaining_idle_bubbles(plugin):
     state = await plugin.storage.session(message.scope)
     idle = IdleEvent(plugin.context, source.platform_meta, state, plugin.generation)
     plugin.controller.decide = AsyncMock(
-        return_value=SimpleNamespace(reply=True, intent="开话题", reason="reply")
+        return_value=SimpleNamespace(
+            reply=True,
+            intent="开话题",
+            reason="reply",
+            planning=None,
+            focus=None,
+            record_id=None,
+        )
     )
     plugin.adapter.request = AsyncMock(return_value=ProviderRequest(prompt="你好"))
     generator = plugin.observe(idle)

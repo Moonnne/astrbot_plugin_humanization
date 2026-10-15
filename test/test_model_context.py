@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from controller_helpers import plan_json
 from diary_helpers import model_change, topic_change
 from test_host_contract import Event, consume
 from test_host_contract import plugin as plugin
@@ -181,21 +182,28 @@ async def test_default_filters_command_recording_and_quote(plugin):
 
 
 async def test_gate_context_prefix_survives_changed_trigger_fields(plugin):
-    plugin.settings.controller.update(group=1, gate_provider="gate", cooldown_seconds=0)
+    plugin.settings.controller.update(
+        group=1, gate_provider="gate", cooldown_seconds=0, mode="scheduled"
+    )
     event = Event()
     await consume(plugin.observe(event))
     message = event.get_extra("humanization_message")
-    generate = AsyncMock(return_value='{"action":"wait","intent":""}')
+    generate = AsyncMock(return_value=plan_json(reply=False))
     plugin.controller.generate = generate
     await plugin.controller.decide(message, False, False)
     first = generate.call_args.args[2]
     await plugin.controller.decide(message, False, False, idle=True)
     second = generate.call_args.args[2]
-    assert first.split(',"trigger":')[0] == second.split(',"trigger":')[0]
+    assert (
+        first.split(',"recent_decisions":')[0]
+        == second.split(',"recent_decisions":')[0]
+    )
     payload = json.loads(first)
     assert isinstance(payload["context"], dict)
     assert payload["context"]["messages"][0]["message_id"] == message.message_id
-    assert list(payload) == ["context", "trigger", "target", "bot_id", "activity"]
+    assert payload["recent_decisions"] == []
+    assert len(json.loads(second)["recent_decisions"]) == 1
+    assert payload["reply_required"] is False and "now" in payload
 
 
 async def test_auxiliary_debug_log_records_estimate_and_provider_usage(plugin):

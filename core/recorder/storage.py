@@ -1,13 +1,12 @@
 """Bounded SQLite conversation storage with transactional summary cursors."""
 
-import asyncio
 import json
 from dataclasses import asdict
 from pathlib import Path
 
-import aiosqlite
-
-from ..models import Message, ResetTarget
+from ...models.message import Message
+from ...models.session import ResetTarget
+from ...utils.database import Database
 from .diary import DiaryProtocol
 
 
@@ -15,98 +14,38 @@ class Storage:
     def __init__(self, path: Path, retention: int, log=None):
         self.path = path
         self.retention = retention
-        self.lock = asyncio.Lock()
         self.log = log
+        self.database = Database(path, log)
+        self.sql = self.database.sql
 
     async def open(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = await aiosqlite.connect(self.path)
-        self.db.row_factory = aiosqlite.Row
-        await self.db.executescript("""
-            PRAGMA journal_mode=WAL;
-            PRAGMA foreign_keys=ON;
-            CREATE TABLE IF NOT EXISTS sessions (
-                scope TEXT PRIMARY KEY, umo TEXT NOT NULL, platform TEXT NOT NULL,
-                self_id TEXT NOT NULL, group_id TEXT NOT NULL, private INTEGER NOT NULL,
-                last_human REAL NOT NULL DEFAULT 0, last_reply REAL NOT NULL DEFAULT 0,
-                cursor INTEGER NOT NULL DEFAULT 0, last_seq INTEGER NOT NULL DEFAULT 0,
-                human_count INTEGER NOT NULL DEFAULT 0, summarized_count INTEGER NOT NULL DEFAULT 0,
-                next_idle REAL NOT NULL DEFAULT 0, idle_waiting INTEGER NOT NULL DEFAULT 0,
-                idle_day TEXT NOT NULL DEFAULT '', idle_count INTEGER NOT NULL DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL,
-                seq INTEGER NOT NULL, human_count INTEGER NOT NULL,
-                umo TEXT NOT NULL, platform TEXT NOT NULL, self_id TEXT NOT NULL,
-                group_id TEXT NOT NULL, sender_id TEXT NOT NULL, sender_name TEXT NOT NULL,
-                message_id TEXT NOT NULL, sent_at REAL NOT NULL, received_at REAL NOT NULL,
-                text TEXT NOT NULL, segments TEXT NOT NULL, private INTEGER NOT NULL,
-                day TEXT NOT NULL, direction TEXT NOT NULL,
-                FOREIGN KEY(scope) REFERENCES sessions(scope)
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS messages_source ON messages(scope, direction, message_id)
-                WHERE message_id != '';
-            CREATE INDEX IF NOT EXISTS messages_recent ON messages(scope, seq);
-            CREATE TABLE IF NOT EXISTS diary_days (
-                scope TEXT NOT NULL, day TEXT NOT NULL,
-                through_seq INTEGER NOT NULL, created_at REAL NOT NULL,
-                updated_at REAL NOT NULL, sealed INTEGER NOT NULL DEFAULT 0,
-                coverage_gap INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY(scope, day)
-            );
-            CREATE TABLE IF NOT EXISTS diary_topics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                scope TEXT NOT NULL, day TEXT NOT NULL,
-                topic_at REAL NOT NULL, topic_time TEXT NOT NULL,
-                topic TEXT NOT NULL, interact TEXT NOT NULL,
-                reply TEXT NOT NULL, reaction TEXT NOT NULL,
-                first_seq INTEGER NOT NULL, last_seq INTEGER NOT NULL,
-                created_at REAL NOT NULL, updated_at REAL NOT NULL,
-                FOREIGN KEY(scope, day) REFERENCES diary_days(scope, day) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS diary_topics_recent
-                ON diary_topics(scope, day, updated_at DESC, id DESC);
-            CREATE TABLE IF NOT EXISTS reply_runs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL,
-                started_at REAL NOT NULL, trigger TEXT NOT NULL,
-                status TEXT NOT NULL, sent_parts INTEGER NOT NULL DEFAULT 0,
-                detail TEXT NOT NULL DEFAULT ''
-            );
-            PRAGMA user_version=2;
-        """)
-        # Interrupted sends are not retried: the remote side may already have accepted them.
-        await self.db.execute(
-            "UPDATE reply_runs SET status='unknown' WHERE status='generating'"
-        )
-        await self.trim()
+        await self.database.open()
+        try:
+            async with self.database.transaction() as tx:
+                await tx.execute(self.sql["reply_runs.open_update"])
+                await tx.execute(self.sql["controller_decisions.open_update"])
+            await self.trim()
+        except BaseException:
+            await self.database.close()
+            raise
 
     async def close(self):
-        await self.db.close()
+        await self.database.close()
 
     async def rows(self, query: str, args=()) -> list[dict]:
-        async with self.db.execute(query, args) as cursor:
-            result = [dict(row) for row in await cursor.fetchall()]
-        if self.log:
-            self.log.debug(
-                "database.query", query=query, parameters=args, result=result
-            )
-        return result
+        return await self.database.rows(query, args)
 
     async def session(self, scope: str) -> dict:
-        return (await self.rows("SELECT * FROM sessions WHERE scope=?", (scope,)))[0]
+        return (await self.rows(self.sql["sessions.session_select"], (scope,)))[0]
 
     async def trim(self):
-        async with self.lock:
-            for row in await self.rows("SELECT scope FROM sessions"):
-                await self.db.execute(
-                    "DELETE FROM messages WHERE scope=? AND id NOT IN "
-                    "(SELECT id FROM messages WHERE scope=? ORDER BY seq DESC LIMIT ?)",
+        async with self.database.transaction() as tx:
+            for row in await tx.rows(self.sql["sessions.trim_select"]):
+                await tx.execute(
+                    self.sql["messages.trim_delete"],
                     (row["scope"], row["scope"], self.retention),
                 )
-            await self.db.execute(
-                "DELETE FROM reply_runs WHERE id NOT IN (SELECT id FROM reply_runs ORDER BY id DESC LIMIT 1000)"
-            )
-            await self.db.commit()
+            await tx.execute(self.sql["reply_runs.trim_delete"])
 
     async def append(self, message: Message) -> bool:
         """Insert once and trim atomically; only incoming messages advance activity.
@@ -117,59 +56,48 @@ class Storage:
         Returns:
             False for an adapter duplicate, True for a newly inserted record.
         """
-        async with self.lock:
-            if message.message_id and await self.rows(
-                "SELECT id FROM messages WHERE scope=? AND direction=? AND message_id=?",
+        async with self.database.transaction() as tx:
+            if message.message_id and await tx.rows(
+                self.sql["messages.append_select"],
                 (message.scope, message.direction, message.message_id),
             ):
                 return False
             data = asdict(message)
-            try:
-                await self.db.execute(
-                    "INSERT INTO sessions(scope,umo,platform,self_id,group_id,private) "
-                    "VALUES(:scope,:umo,:platform,:self_id,:group_id,:private) ON CONFLICT(scope) DO NOTHING",
-                    data,
-                )
-                incoming = message.direction == "in"
-                await self.db.execute(
-                    "UPDATE sessions SET last_seq=last_seq+1,human_count=human_count+?,"
-                    "last_human=CASE WHEN ? THEN ? ELSE last_human END,"
-                    "idle_waiting=CASE WHEN ? THEN 0 ELSE idle_waiting END,"
-                    "umo=CASE WHEN ? THEN ? ELSE umo END WHERE scope=?",
-                    (
-                        incoming,
-                        incoming,
-                        message.received_at,
-                        incoming,
-                        incoming,
-                        message.umo,
-                        message.scope,
-                    ),
-                )
-                session = await self.session(message.scope)
-                data.update(seq=session["last_seq"], human_count=session["human_count"])
-                columns = ",".join(data)
-                placeholders = ",".join(f":{name}" for name in data)
-                await self.db.execute(
-                    f"INSERT INTO messages({columns}) VALUES({placeholders})", data
-                )
-                await self.db.execute(
-                    "DELETE FROM messages WHERE scope=? AND seq<=?",
-                    (message.scope, session["last_seq"] - self.retention),
-                )
-                await self.db.commit()
-                if self.log:
-                    self.log.debug(
-                        "database.message.append", record=data, retention=self.retention
-                    )
-            except BaseException:
-                await self.db.rollback()
-                raise
+            await tx.execute(
+                self.sql["sessions.append_insert"],
+                data,
+            )
+            incoming = message.direction == "in"
+            await tx.execute(
+                self.sql["sessions.append_update"],
+                (
+                    incoming,
+                    incoming,
+                    message.received_at,
+                    incoming,
+                    incoming,
+                    message.umo,
+                    message.scope,
+                ),
+            )
+            session = (
+                await tx.rows(self.sql["sessions.session_select"], (message.scope,))
+            )[0]
+            data.update(seq=session["last_seq"], human_count=session["human_count"])
+            await tx.execute(self.sql["messages.append_insert"], data)
+            await tx.execute(
+                self.sql["messages.append_delete"],
+                (message.scope, session["last_seq"] - self.retention),
+            )
+        if self.log:
+            self.log.debug(
+                "database.message.append", record=data, retention=self.retention
+            )
         return True
 
     async def recent(self, scope: str, limit: int) -> list[dict]:
         rows = await self.rows(
-            "SELECT * FROM messages WHERE scope=? ORDER BY seq DESC LIMIT ?",
+            self.sql["messages.recent_select"],
             (scope, limit),
         )
         return list(reversed(rows))
@@ -187,45 +115,129 @@ class Storage:
         Returns:
             Chronological days with structured topics, readable body and omission counts.
         """
-        days = await self.rows(
-            "SELECT * FROM diary_days d WHERE scope=? AND (coverage_gap=1 OR EXISTS "
-            "(SELECT 1 FROM diary_topics t WHERE t.scope=d.scope AND t.day=d.day)) "
-            "ORDER BY day DESC LIMIT ?",
-            (scope, limit),
-        )
-        for day in days:
-            topics = await self.rows(
-                "SELECT id,topic_at,topic_time,topic,interact,reply,reaction,first_seq,last_seq "
-                "FROM diary_topics WHERE scope=? AND day=? ORDER BY updated_at DESC,id DESC",
-                (scope, day["day"]),
+        async with self.database.snapshot() as tx:
+            days = await tx.rows(
+                self.sql["diary_days.diaries_select"],
+                (scope, limit),
             )
-            selected = []
-            for topic in topics:
-                topic["interact"] = json.loads(topic["interact"])
-                cost = max(
-                    len(json.dumps(topic, ensure_ascii=False, separators=(",", ":"))),
-                    len(DiaryProtocol.render_topic(topic)),
+            for day in days:
+                topics = await tx.rows(
+                    self.sql["diary_topics.diaries_select"],
+                    (scope, day["day"]),
                 )
-                if budget is not None:
-                    if cost > budget:
-                        continue
-                    budget -= cost
-                selected.append(topic)
-            selected.sort(key=lambda topic: (topic["topic_at"], topic["id"]))
-            day["topics"] = selected
-            day["omitted_topics"] = len(topics) - len(selected)
-            parts = [f"# {day['day']}"]
-            if day["coverage_gap"]:
-                parts.append(
-                    "[Coverage]覆盖缺口：部分原始消息已滚动淘汰或输入内容截断。"
-                )
-            if day["omitted_topics"]:
-                parts.append(
-                    f"[Context]另有 {day['omitted_topics']} 个话题未展示，不代表不存在。"
-                )
-            parts.extend(DiaryProtocol.render_topic(topic) for topic in selected)
-            day["body"] = "\n\n".join(parts)
-        return list(reversed(days))
+                selected = []
+                for topic in topics:
+                    topic["interact"] = json.loads(topic["interact"])
+                    cost = max(
+                        len(
+                            json.dumps(topic, ensure_ascii=False, separators=(",", ":"))
+                        ),
+                        len(DiaryProtocol.render_topic(topic)),
+                    )
+                    if budget is not None:
+                        if cost > budget:
+                            continue
+                        budget -= cost
+                    selected.append(topic)
+                selected.sort(key=lambda topic: (topic["topic_at"], topic["id"]))
+                day["topics"] = selected
+                day["omitted_topics"] = len(topics) - len(selected)
+                parts = [f"# {day['day']}"]
+                if day["coverage_gap"]:
+                    parts.append(
+                        "[Coverage]覆盖缺口：部分原始消息已滚动淘汰或输入内容截断。"
+                    )
+                if day["omitted_topics"]:
+                    parts.append(
+                        f"[Context]另有 {day['omitted_topics']} 个话题未展示，不代表不存在。"
+                    )
+                parts.extend(DiaryProtocol.render_topic(topic) for topic in selected)
+                day["body"] = "\n\n".join(parts)
+            return list(reversed(days))
+
+    async def controller_topics(self, scope: str, count: int, budget: int) -> dict:
+        """Read recent complete topics across dates under the planner's own budget.
+
+        Args:
+            scope: Canonical conversation identity.
+            count: Maximum candidate count; zero disables topic observation.
+            budget: Character budget for serialized complete topic records.
+
+        Returns:
+            Chronological items and explicit candidate/included/omitted counts.
+        """
+        candidates = await self.rows(
+            self.sql["diary_topics.controller_topics_select"],
+            (scope, count),
+        )
+        items = []
+        for topic in candidates:
+            topic["interact"] = json.loads(topic["interact"])
+            cost = len(json.dumps(topic, ensure_ascii=False, separators=(",", ":")))
+            if cost > budget:
+                continue
+            budget -= cost
+            items.append(topic)
+        items.sort(key=lambda topic: (topic["topic_at"], topic["id"]))
+        return {
+            "items": items,
+            "candidate_count": len(candidates),
+            "included_count": len(items),
+            "omitted_count": len(candidates) - len(items),
+        }
+
+    async def decisions(self, scope: str) -> list[dict]:
+        rows = await self.rows(
+            self.sql["controller_decisions.decisions_select"],
+            (scope,),
+        )
+        for row in rows:
+            row["decision"] = json.loads(row.pop("decision_json"))
+        return list(reversed(rows))
+
+    async def record_decision(
+        self, scope, data, now, through, last_human, trigger, required
+    ):
+        """Persist a validated decision and trim only this conversation atomically.
+
+        Args:
+            scope: Canonical conversation identity.
+            data: Validated Controller output.
+            now: Actual assessment completion timestamp.
+            through: Observed message sequence watermark.
+            last_human: Last human arrival timestamp known at assessment start.
+            trigger: Message or idle evaluation.
+            required: Whether reply was required by a configured direct trigger.
+
+        Returns:
+            The inserted decision ID for later execution-result updates.
+        """
+        async with self.database.transaction() as tx:
+            result = await tx.execute(
+                self.sql["controller_decisions.record_decision_insert"],
+                (
+                    scope,
+                    now,
+                    through,
+                    last_human,
+                    trigger,
+                    required,
+                    json.dumps(data, ensure_ascii=False, separators=(",", ":")),
+                    "pending" if data["reply"] else "observed",
+                ),
+            )
+            await tx.execute(
+                self.sql["controller_decisions.record_decision_delete"],
+                (scope, scope),
+            )
+            return result.lastrowid
+
+    async def finish_decision(self, decision_id: int, outcome: str):
+        async with self.database.transaction() as tx:
+            await tx.execute(
+                self.sql["controller_decisions.finish_decision_update"],
+                (outcome, decision_id),
+            )
 
     async def commit_summary(
         self,
@@ -249,67 +261,61 @@ class Storage:
             now: Commit timestamp.
             coverage_gap: Whether missing or clipped input was observed in this batch.
         """
-        async with self.lock:
-            sealed = await self.rows(
-                "SELECT sealed FROM diary_days WHERE scope=? AND day=?", (scope, day)
+        async with self.database.transaction() as tx:
+            sealed = await tx.rows(
+                self.sql["diary_days.commit_summary_select"], (scope, day)
             )
             if sealed and sealed[0]["sealed"]:
                 raise ValueError("Cannot rewrite a sealed diary")
-            try:
-                await self.db.execute(
-                    "UPDATE diary_days SET sealed=1 WHERE scope=? AND day<?",
-                    (scope, day),
-                )
-                await self.db.execute(
-                    "INSERT INTO diary_days(scope,day,through_seq,created_at,updated_at,coverage_gap) "
-                    "VALUES(?,?,?,?,?,?) ON CONFLICT(scope,day) DO UPDATE SET "
-                    "through_seq=excluded.through_seq,updated_at=excluded.updated_at,"
-                    "coverage_gap=MAX(diary_days.coverage_gap,excluded.coverage_gap)",
-                    (scope, day, through, now, now, coverage_gap),
-                )
-                for change in changes:
-                    values = {
-                        key: json.dumps(value, ensure_ascii=False)
-                        if key == "interact"
-                        else value
-                        for key, value in change.items()
-                        if key
-                        in DiaryProtocol.fields
-                        | {"first_seq", "last_seq", "topic_at", "topic_time"}
-                    }
-                    if change["action"] == "add":
-                        values.update(
-                            scope=scope, day=day, created_at=now, updated_at=now
+            await tx.execute(
+                self.sql["diary_days.commit_summary_update"],
+                (scope, day),
+            )
+            await tx.execute(
+                self.sql["diary_days.commit_summary_insert"],
+                (scope, day, through, now, now, coverage_gap),
+            )
+            for change in changes:
+                values = {
+                    key: json.dumps(value, ensure_ascii=False)
+                    if key == "interact"
+                    else value
+                    for key, value in change.items()
+                    if key
+                    in DiaryProtocol.fields
+                    | {"first_seq", "last_seq", "topic_at", "topic_time"}
+                }
+                if change["action"] == "add":
+                    values.update(scope=scope, day=day, created_at=now, updated_at=now)
+                    await tx.execute(
+                        self.sql["diary_topics.commit_summary_insert"],
+                        values,
+                    )
+                else:
+                    # A correction preserves the topic's first time and prior source extent.
+                    first = values.pop("first_seq")
+                    last = values.pop("last_seq")
+                    values["updated_at"] = now
+                    result = await tx.execute(
+                        self.sql["diary_topics.commit_summary_update"],
+                        {
+                            **dict.fromkeys(DiaryProtocol.fields),
+                            **values,
+                            "first_seq": first,
+                            "last_seq": last,
+                            "id": change["id"],
+                            "scope": scope,
+                            "day": day,
+                        },
+                    )
+                    if result.rowcount != 1:
+                        raise ValueError(
+                            "Diary update target no longer exists in this day"
                         )
-                        columns = ",".join(values)
-                        placeholders = ",".join(f":{key}" for key in values)
-                        await self.db.execute(
-                            f"INSERT INTO diary_topics({columns}) VALUES({placeholders})",
-                            values,
-                        )
-                    else:
-                        # A correction preserves the topic's first time and prior source extent.
-                        first = values.pop("first_seq")
-                        last = values.pop("last_seq")
-                        values["updated_at"] = now
-                        assignments = ",".join(f"{key}=?" for key in values)
-                        result = await self.db.execute(
-                            f"UPDATE diary_topics SET {assignments},first_seq=MIN(first_seq,?),"
-                            "last_seq=MAX(last_seq,?) WHERE id=? AND scope=? AND day=?",
-                            (*values.values(), first, last, change["id"], scope, day),
-                        )
-                        if result.rowcount != 1:
-                            raise ValueError(
-                                "Diary update target no longer exists in this day"
-                            )
-                await self.db.execute(
-                    "UPDATE sessions SET cursor=?,summarized_count=? WHERE scope=?",
-                    (through, human_count, scope),
-                )
-                await self.db.commit()
-            except BaseException:
-                await self.db.rollback()
-                raise
+            await tx.execute(
+                self.sql["sessions.commit_summary_update"],
+                (through, human_count, scope),
+            )
         if self.log:
             self.log.debug(
                 "database.summary.commit",
@@ -332,21 +338,20 @@ class Storage:
         }
         if not values.keys() <= allowed:
             raise ValueError("Unsupported session state field")
-        async with self.lock:
-            await self.db.execute(
-                "UPDATE sessions SET "
-                + ",".join(f"{key}=?" for key in values)
-                + " WHERE scope=?",
-                (*values.values(), scope),
+        async with self.database.transaction() as tx:
+            await tx.execute(
+                self.sql["sessions.update_session_update"],
+                {
+                    **dict.fromkeys(allowed),
+                    **values,
+                    **{f"set_{key}": key in values for key in allowed},
+                    "scope": scope,
+                },
             )
-            await self.db.commit()
 
     async def seal_before(self, day: str):
-        async with self.lock:
-            await self.db.execute(
-                "UPDATE diary_days SET sealed=1 WHERE day<? AND sealed=0", (day,)
-            )
-            await self.db.commit()
+        async with self.database.transaction() as tx:
+            await tx.execute(self.sql["diary_days.seal_before_update"], (day,))
 
     async def record_reply_activity(
         self, scope: str, now: float, day: str, idle_human: float | None
@@ -360,39 +365,33 @@ class Storage:
             idle_human: Human activity timestamp captured by the idle trigger,
                 supplied only for the first proactive bubble that completes sending.
         """
-        async with self.lock:
-            await self.db.execute(
-                "UPDATE sessions SET last_reply=? WHERE scope=?", (now, scope)
+        async with self.database.transaction() as tx:
+            await tx.execute(
+                self.sql["sessions.record_reply_activity_update"], (now, scope)
             )
             if idle_human is not None:
-                await self.db.execute(
-                    "UPDATE sessions SET idle_waiting=CASE WHEN last_human=? THEN 1 ELSE 0 END,"
-                    "idle_count=CASE WHEN idle_day=? THEN idle_count+1 ELSE 1 END,idle_day=? WHERE scope=?",
+                await tx.execute(
+                    self.sql["sessions.record_reply_activity_update_2"],
                     (idle_human, day, day, scope),
                 )
-            await self.db.commit()
 
     async def start_reply(self, scope: str, now: float, trigger: str) -> int:
-        async with self.lock:
-            cursor = await self.db.execute(
-                "INSERT INTO reply_runs(scope,started_at,trigger,status) VALUES(?,?,?,'generating')",
+        async with self.database.transaction() as tx:
+            cursor = await tx.execute(
+                self.sql["reply_runs.start_reply_insert"],
                 (scope, now, trigger),
             )
-            await self.db.execute(
-                "DELETE FROM reply_runs WHERE id NOT IN (SELECT id FROM reply_runs ORDER BY id DESC LIMIT 1000)"
-            )
-            await self.db.commit()
+            await tx.execute(self.sql["reply_runs.trim_delete"])
             return cursor.lastrowid
 
     async def finish_reply(
         self, run: int, status: str, sent: int = 0, detail: str = ""
     ):
-        async with self.lock:
-            await self.db.execute(
-                "UPDATE reply_runs SET status=?,sent_parts=?,detail=? WHERE id=?",
+        async with self.database.transaction() as tx:
+            await tx.execute(
+                self.sql["reply_runs.finish_reply_update"],
                 (status, sent, detail, run),
             )
-            await self.db.commit()
 
     async def reset(self, scope: str, day: str | None = None):
         """Reset one conversation, optionally retaining earlier diaries.
@@ -401,24 +400,18 @@ class Storage:
             scope: Plugin conversation identity; never a global database reset.
             day: Diary date to remove, or None to remove all its diaries.
         """
-        async with self.lock:
-            try:
-                await self.db.execute("DELETE FROM messages WHERE scope=?", (scope,))
-                await self.db.execute("DELETE FROM reply_runs WHERE scope=?", (scope,))
-                if day is None:
-                    await self.db.execute(
-                        "DELETE FROM diary_days WHERE scope=?", (scope,)
-                    )
-                else:
-                    await self.db.execute(
-                        "DELETE FROM diary_days WHERE scope=? AND day=?",
-                        (scope, day),
-                    )
-                await self.db.execute("DELETE FROM sessions WHERE scope=?", (scope,))
-                await self.db.commit()
-            except BaseException:
-                await self.db.rollback()
-                raise
+        async with self.database.transaction() as tx:
+            await tx.execute(self.sql["messages.reset_delete"], (scope,))
+            await tx.execute(self.sql["reply_runs.reset_delete"], (scope,))
+            await tx.execute(self.sql["controller_decisions.reset_delete"], (scope,))
+            if day is None:
+                await tx.execute(self.sql["diary_days.reset_delete"], (scope,))
+            else:
+                await tx.execute(
+                    self.sql["diary_days.reset_delete_2"],
+                    (scope, day),
+                )
+            await tx.execute(self.sql["sessions.reset_delete"], (scope,))
 
     async def reset_targets(self) -> list[ResetTarget]:
         """Locate current sessions and diary-only scopes retained by a today reset.
@@ -426,41 +419,75 @@ class Storage:
         Returns:
             Native routes and identities of every persisted plugin conversation.
         """
-        targets = [
-            ResetTarget(
-                row["scope"],
-                row["umo"],
-                row["platform"],
-                row["self_id"],
-                row["group_id"],
-                bool(row["private"]),
-            )
-            for row in await self.rows("SELECT * FROM sessions")
-        ]
-        for row in await self.rows(
-            "SELECT DISTINCT scope FROM diary_days WHERE scope NOT IN (SELECT scope FROM sessions)"
-        ):
-            platform, self_id, kind, sid = json.loads(row["scope"])
-            private = kind == "private"
-            targets.append(
+        async with self.database.snapshot() as tx:
+            targets = [
                 ResetTarget(
                     row["scope"],
-                    f"{platform}:{'FriendMessage' if private else 'GroupMessage'}:{sid}",
-                    platform,
-                    self_id,
-                    "" if private else sid,
-                    private,
+                    row["umo"],
+                    row["platform"],
+                    row["self_id"],
+                    row["group_id"],
+                    bool(row["private"]),
                 )
-            )
-        return targets
+                for row in await tx.rows(self.sql["sessions.reset_targets_select"])
+            ]
+            for row in await tx.rows(self.sql["diary_days.reset_targets_select"]):
+                platform, self_id, kind, sid = json.loads(row["scope"])
+                private = kind == "private"
+                targets.append(
+                    ResetTarget(
+                        row["scope"],
+                        f"{platform}:{'FriendMessage' if private else 'GroupMessage'}:{sid}",
+                        platform,
+                        self_id,
+                        "" if private else sid,
+                        private,
+                    )
+                )
+            return targets
 
     async def reset_all(self):
-        """Delete every plugin row atomically, keeping the database file and schema."""
-        async with self.lock:
-            try:
-                for table in ("messages", "reply_runs", "diary_days", "sessions"):
-                    await self.db.execute(f"DELETE FROM {table}")
-                await self.db.commit()
-            except BaseException:
-                await self.db.rollback()
-                raise
+        """Delete every plugin row atomically, retaining the file and schema."""
+        async with self.database.transaction() as tx:
+            await tx.execute(self.sql["messages.reset_all_delete"])
+            await tx.execute(self.sql["reply_runs.reset_all_delete"])
+            await tx.execute(self.sql["diary_days.reset_all_delete"])
+            await tx.execute(self.sql["controller_decisions.reset_all_delete"])
+            await tx.execute(self.sql["sessions.reset_all_delete"])
+
+    async def message_count(self, scope, through_seq=None):
+        rows = await self.rows(
+            self.sql["messages.message_count_select"],
+            (scope, through_seq, through_seq),
+        )
+        return rows[0]["count"]
+
+    async def pending_sessions(self):
+        return await self.rows(self.sql["sessions.pending_sessions_select"])
+
+    async def group_sessions(self):
+        return await self.rows(self.sql["sessions.group_sessions_select"])
+
+    async def pending_messages(self, scope, cursor, limit):
+        return await self.rows(
+            self.sql["messages.pending_messages_select"],
+            (scope, cursor, limit),
+        )
+
+    async def preceding_messages(self, scope, through, limit):
+        return await self.rows(
+            self.sql["messages.preceding_messages_select"],
+            (scope, through, limit),
+        )
+
+    async def info(self, scope):
+        async with self.database.snapshot() as tx:
+            counts = await tx.rows(
+                self.sql["messages.info_select"],
+                (scope, scope, scope),
+            )
+            diary = await tx.rows(
+                self.sql["diary_days.info_select"],
+                (scope,),
+            )
+        return counts[0], diary

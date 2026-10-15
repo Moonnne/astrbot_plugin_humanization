@@ -26,7 +26,7 @@ from astrbot.core.star.filter.command_group import CommandGroupFilter
 from astrbot.core.star.session_llm_manager import SessionServiceManager
 from astrbot.core.star.session_plugin_manager import SessionPluginManager
 
-from .models import Message
+from ..models.message import Message
 
 
 class ScopeFilter(filter.CustomFilter):
@@ -388,11 +388,24 @@ class AstrBotAdapter:
         return request
 
     @staticmethod
-    def inject_observation(request, context: str, intent: str):
+    def inject_observation(
+        request, context: str, intent: str, planning=None, focus=None
+    ):
+        guidance = "本轮表达意图：" + intent
+        if planning is not None:
+            guidance = "本轮聊天规划（尚未执行，焦点仅表示语义对象）：" + json.dumps(
+                {
+                    "emotion": planning["emotion"],
+                    "plan": planning["plan"],
+                    "focus": focus,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
         request.extra_user_content_parts.extend(
             [
                 TextPart(text=context).mark_as_temp(),
-                TextPart(text="本轮表达意图：" + intent).mark_as_temp(),
+                TextPart(text=guidance).mark_as_temp(),
             ]
         )
 
