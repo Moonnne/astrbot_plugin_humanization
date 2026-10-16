@@ -415,6 +415,15 @@ class AstrBotAdapter:
     ):
         guidance = "本轮表达意图：" + intent
         if planning is not None:
+            # Only collapse exact duplicates in this request, never infer identity
+            # from native history text or discard an out-of-window focus snapshot.
+            if focus and focus.get("message"):
+                message = focus["message"]
+                if message["message_id"] and message in json.loads(context)["messages"]:
+                    focus = {
+                        **focus,
+                        "message": {"message_id": message["message_id"]},
+                    }
             guidance = "本轮聊天规划（尚未执行，焦点仅表示语义对象）：" + json.dumps(
                 {
                     "emotion": planning["emotion"],

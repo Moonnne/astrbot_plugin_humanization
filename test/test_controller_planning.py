@@ -177,7 +177,8 @@ async def test_history_is_bounded_per_scope_survives_restart_and_omits_old_guida
     payload = json.loads(plugin.controller.generate.call_args.args[2])
     assert len(payload["recent_decisions"]) == 10
     assert "private old guidance" not in plugin.controller.generate.call_args.args[2]
-    assert all(row["age_seconds"] > 0 for row in payload["recent_decisions"])
+    assert all("age_seconds" not in row for row in payload["recent_decisions"])
+    assert payload["recent_decisions"][0]["time"] == "1970-01-01T08:00:02+08:00"
     assert (await plugin.storage.decisions(message.scope))[-1]["outcome"] == "observed"
 
 

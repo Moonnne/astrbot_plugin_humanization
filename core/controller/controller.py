@@ -103,7 +103,6 @@ class Controller:
                         "time": datetime.fromtimestamp(
                             row["created_at"], self.settings.timezone
                         ).isoformat(),
-                        "age_seconds": max(0, now.timestamp() - row["created_at"]),
                         "last_human_at": datetime.fromtimestamp(
                             row["last_human_at"], self.settings.timezone
                         ).isoformat(),

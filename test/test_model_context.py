@@ -3,6 +3,8 @@
 import asyncio
 import copy
 import json
+from dataclasses import replace
+from os.path import commonprefix
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -204,6 +206,100 @@ async def test_gate_context_prefix_survives_changed_trigger_fields(plugin):
     assert payload["recent_decisions"] == []
     assert len(json.loads(second)["recent_decisions"]) == 1
     assert payload["reply_required"] is False and "now" in payload
+
+
+async def test_gate_topic_prefix_survives_window_rollover_without_stale_messages(
+    plugin,
+):
+    plugin.settings.controller.update(
+        group=1, gate_provider="gate", cooldown_seconds=0, mode="scheduled"
+    )
+    plugin.storage.retention = 100
+    base = plugin.adapter.snapshot(Event())
+    for index in range(1, 31):
+        await plugin.storage.append(replace(base, message_id=str(index)))
+    await plugin.storage.commit_summary(
+        base.scope, base.day, [topic_change("stable topic " * 80)], 1, 1, 1
+    )
+    generate = AsyncMock(return_value=plan_json(reply=False))
+    plugin.controller.generate = generate
+    await plugin.controller.decide(replace(base, message_id="30"), False, False)
+    first = generate.call_args.args[2]
+    latest = replace(base, message_id="31")
+    await plugin.storage.append(latest)
+    await plugin.controller.decide(latest, False, False)
+    second = generate.call_args.args[2]
+    await plugin.controller.decide(latest, False, False, idle=True)
+    third = json.loads(generate.call_args.args[2])
+    before, after = json.loads(first), json.loads(second)
+    assert [row["message_id"] for row in before["context"]["messages"]] == [
+        str(index) for index in range(1, 31)
+    ]
+    assert [row["message_id"] for row in after["context"]["messages"]] == [
+        str(index) for index in range(2, 32)
+    ]
+    assert before["context"]["topics"] == after["context"]["topics"]
+    assert before["context"]["topics"]["included_count"] == 1
+    assert third["recent_decisions"][0] == after["recent_decisions"][0]
+    assert first.split(',"messages":')[0] == second.split(',"messages":')[0]
+    # Compare against the previous assembly order with the very same data.
+    old_payloads = []
+    for payload in (before, after):
+        context = payload["context"]
+        old_payloads.append(
+            json.dumps(
+                {
+                    **payload,
+                    "context": {
+                        "notice": context["notice"],
+                        "messages": context["messages"],
+                        "topics": context["topics"],
+                    },
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        )
+    assert len(commonprefix([first, second])) > len(commonprefix(old_payloads)) + 1000
+    assert len(first) == len(old_payloads[0])
+    assert len({call.args[1] for call in generate.call_args_list}) == 1
+    other = json.loads(await plugin.prompts.context("other", for_controller=True))
+    assert other["messages"] == [] and other["topics"]["items"] == []
+
+
+@pytest.mark.parametrize("observed", ["same", "different", "missing"])
+async def test_main_focus_only_deduplicates_exact_visible_message(plugin, observed):
+    event = Event("unique focus content " * 100)
+    await consume(plugin.observe(event))
+    message = event.get_extra("humanization_message")
+    context = json.loads(await plugin.prompts.context(message.scope))
+    focus = {"message": copy.deepcopy(context["messages"][0]), "topic": None}
+    original_focus = copy.deepcopy(focus)
+    if observed == "different":
+        context["messages"][0]["text"] = "same ID but different content"
+    elif observed == "missing":
+        context["messages"] = []
+    observation = json.dumps(context, ensure_ascii=False, separators=(",", ":"))
+    planning = json.loads(plan_json())
+    original_plan = copy.deepcopy(planning)
+    history = [{"role": "user", "content": "native history"}]
+    request = ProviderRequest(prompt="native input", contexts=copy.deepcopy(history))
+    plugin.adapter.inject_observation(request, observation, "", planning, focus)
+    injected = request.extra_user_content_parts[-1].text
+    sent_focus = json.loads(injected.split("：", 1)[1])["focus"]
+    if observed == "same":
+        assert sent_focus["message"] == {"message_id": message.message_id}
+        assert "unique focus content" not in injected
+        assert "unique focus content" in request.extra_user_content_parts[0].text
+        assert len(injected) < len(json.dumps(original_focus, ensure_ascii=False))
+    else:
+        assert sent_focus == original_focus
+    assert focus == original_focus and planning == original_plan
+    assert request.contexts == history and request.prompt == "native input"
+    assert all(
+        part.model_dump_for_context()["_no_save"]
+        for part in request.extra_user_content_parts
+    )
 
 
 async def test_auxiliary_debug_log_records_estimate_and_provider_usage(plugin):
