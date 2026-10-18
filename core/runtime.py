@@ -64,7 +64,12 @@ class Runtime:
             self.settings.recorder["retention"],
             self.log,
         )
-        self.prompts = Prompts(self.settings, self.storage, context.persona_manager)
+        self.prompts = Prompts(
+            self.settings,
+            self.storage,
+            context.persona_manager,
+            self.adapter.is_robot_record,
+        )
         self.controller = Controller(
             self.settings, self.storage, self.adapter.generate, self.prompts, self.log
         )
@@ -75,6 +80,7 @@ class Runtime:
             self.adapter.generate,
             self.prompts.text["summary"],
             self.log,
+            self.adapter.is_robot_record,
         )
         self.admin = Management(self)
 
@@ -153,9 +159,12 @@ class Runtime:
         message = self.adapter.snapshot(event)
         scope = message.scope
         version = self.reset_versions.get(scope, 0)
+        if await self.adapter.filter_group_robot(event):
+            return
         async with self.record_locks.setdefault(scope, asyncio.Lock()):
             if (
-                self.resetting_all
+                self.closed
+                or self.resetting_all
                 or version != self.reset_versions.get(scope, 0)
                 or message.received_at < self.reset_since.get(scope, 0)
             ):
@@ -308,7 +317,7 @@ class Runtime:
                     ):
                         return
                 elif scheduled is None:
-                    mentioned = self.settings.mentioned(message.text)
+                    mentioned = self.settings.mentioned(message.text, message.segments)
                     forced = self.settings.forced(direct_at, mentioned)
                     if not forced:
                         await asyncio.sleep(
@@ -322,7 +331,7 @@ class Runtime:
                     ):
                         self.log.debug("reply.skipped", reason="newer_message")
                         return
-                mentioned = self.settings.mentioned(message.text)
+                mentioned = self.settings.mentioned(message.text, message.segments)
                 if scheduled is None:
                     decision = await self.controller.decide(
                         message, direct_at, mentioned, idle
@@ -456,6 +465,8 @@ class Runtime:
                 self.scheduler.end_idle(message.scope, bool(turn and turn["recorded"]))
             if turn is not None:
                 # Release all cached component references even on cancellation.
+                if "robot_quote_message" in turn:
+                    event.message_obj = turn.pop("robot_quote_message")
                 turn.clear()
                 event.set_extra("humanization_turn", None)
                 event.set_extra("enable_streaming", previous_streaming)
@@ -828,6 +839,7 @@ class Runtime:
 
     async def terminate(self):
         self.closed = True
+        self.adapter.robot_cache.clear()
         self.scheduler.close()
         self.admin.close()
         if ScopeFilter.settings is self.settings:

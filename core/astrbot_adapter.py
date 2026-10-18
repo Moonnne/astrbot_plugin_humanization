@@ -3,12 +3,14 @@
 import asyncio
 import copy
 import json
+import re
 import time
 import uuid
+from collections import OrderedDict
 from datetime import datetime
 
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.message_components import At, Plain, Reply
+from astrbot.api.message_components import At, Plain, Poke, Reply
 from astrbot.core.agent.context.token_counter import EstimateTokenCounter
 from astrbot.core.agent.message import Message as AgentMessage
 from astrbot.core.agent.message import TextPart
@@ -165,6 +167,115 @@ class AstrBotAdapter:
         self.context = context
         self.settings = settings
         self.log = log
+        self.robot_cache = OrderedDict()
+        self.robot_slots = asyncio.Semaphore(4)
+
+    async def is_group_robot(self, event, sender_id: str) -> bool:
+        """Resolve a group sender using bounded, short-lived platform metadata.
+
+        Args:
+            event: Event providing the platform, bot account and group route.
+            sender_id: Sender to classify, including a quoted/history sender.
+
+        Returns:
+            True only for an explicit boolean is_robot result. Unknown senders
+            remain visible; failures are cached briefly to avoid retry storms.
+        """
+        if (
+            not self.settings.recorder["filter_group_robots"]
+            or event.is_private_chat()
+            or not sender_id
+        ):
+            return False
+        return await self._group_robot(
+            event.get_platform_id(),
+            str(event.get_self_id()),
+            str(event.get_group_id()),
+            str(sender_id),
+            getattr(event, "bot", None),
+        )
+
+    async def is_robot_record(self, row: dict) -> bool:
+        """Exclude identified incoming bot records when reading existing rows."""
+        if (
+            not self.settings.recorder["filter_group_robots"]
+            or row["private"]
+            or row["direction"] != "in"
+        ):
+            return False
+        return await self._group_robot(
+            row["platform"], row["self_id"], row["group_id"], row["sender_id"]
+        )
+
+    async def _group_robot(self, platform_id, self_id, group_id, sender_id, bot=None):
+        """Share bounded member lookups between events and stored observations.
+
+        Args:
+            platform_id: Host adapter instance identifier.
+            self_id: Receiving bot account, also used for OneBot routing.
+            group_id: Group containing the sender.
+            sender_id: Member to classify.
+            bot: Current event's client, or None to resolve it from the host.
+
+        Returns:
+            Whether the platform explicitly identifies the member as a robot.
+        """
+        key = (platform_id, self_id, group_id, sender_id)
+        async with self.robot_slots:
+            cached = self.robot_cache.get(key)
+            if cached and cached[0] > time.monotonic():
+                self.robot_cache.move_to_end(key)
+                return cached[1] is True
+            value = None
+            try:
+                if bot is None:
+                    platform = self.context.get_platform_inst(platform_id)
+                    bot = platform.get_client() if platform else None
+                if bot is not None:
+                    async with asyncio.timeout(3):
+                        result = await bot.call_action(
+                            "get_group_member_info",
+                            self_id=self_id,
+                            group_id=int(group_id),
+                            user_id=int(sender_id),
+                        )
+                    if type(result.get("is_robot")) is bool:
+                        value = result["is_robot"]
+            except Exception as exc:
+                self.log.debug(
+                    "member.robot.lookup_failed", error_type=type(exc).__name__
+                )
+            self.robot_cache[key] = (
+                time.monotonic() + (600 if value is not None else 30),
+                value,
+            )
+            self.robot_cache.move_to_end(key)
+            if len(self.robot_cache) > 2048:
+                self.robot_cache.popitem(last=False)
+            return value is True
+
+    async def filter_group_robot(self, event) -> bool:
+        """Exclude bot input without stopping native persistence or commands."""
+        if event.get_extra("humanization_filtered_robot"):
+            return True
+        if not await self.is_group_robot(event, str(event.get_sender_id())):
+            return False
+        event.set_extra("humanization_filtered_robot", True)
+        event.should_call_llm(True)
+        handlers = event.get_extra("activated_handlers")
+        if handlers:
+            handlers[:] = [
+                handler
+                for handler in handlers
+                if not (
+                    handler.handler_module_path == "astrbot.builtin_stars.astrbot.main"
+                    and handler.handler_name in {"handle_empty_mention", "on_message"}
+                )
+            ]
+        self.log.debug(
+            "message.filtered", reason="group_robot", sender_id=event.get_sender_id()
+        )
+        return True
 
     def snapshot(self, event) -> Message:
         private = event.is_private_chat()
@@ -188,6 +299,35 @@ class AstrBotAdapter:
             elif isinstance(part, At):
                 segments.append({"type": "at", "id": str(part.qq)})
                 rendered.append(f"[@{part.qq}]")
+            elif isinstance(part, Poke):
+                raw = event.message_obj.raw_message
+                notice = (
+                    isinstance(raw, dict)
+                    and raw.get("post_type") == "notice"
+                    and raw.get("sub_type") == "poke"
+                )
+                # Only notification target_id identifies a user. A normal poke
+                # message segment's id can instead identify a poke animation.
+                target = str(raw.get("target_id") or "") if notice else ""
+                target = target if target.isdecimal() and int(target) > 0 else None
+                actor = str(event.get_sender_id())
+                directed = target == str(event.get_self_id()) if target else None
+                segments.append(
+                    {
+                        "type": "poke",
+                        "sender_id": actor,
+                        "target_id": target,
+                        "target_is_self": directed,
+                    }
+                )
+                relation = (
+                    ("目标是本机器人" if directed else "目标不是本机器人")
+                    if target
+                    else "目标未知，不推定为本机器人"
+                )
+                rendered.append(
+                    f"[poke：发送者QQ={actor}；目标QQ={target or '未知'}；{relation}]"
+                )
             else:
                 tag = part.type.lower()
                 segments.append({"type": tag})
@@ -269,8 +409,8 @@ class AstrBotAdapter:
                     )
                 ]
 
-    def filter_agent_history(self, event, run_context):
-        """Keep command rounds outside inference and native compression.
+    async def filter_agent_history(self, event, run_context):
+        """Keep filtered input outside inference and native compression.
 
         Args:
             event: Event owning this plugin's current Agent turn.
@@ -284,11 +424,17 @@ class AstrBotAdapter:
         if runner is not None:
             turn["usage_runner"] = runner
             turn["usage_previous"] = TokenUsage()
-        if not self.settings.recorder["filter_commands"]:
+        filter_commands = self.settings.recorder["filter_commands"]
+        filter_robots = (
+            self.settings.recorder["filter_group_robots"]
+            and not event.is_private_chat()
+        )
+        if not filter_commands and not filter_robots:
             return
         original = run_context.messages
         retained = []
         removed = set()
+        replacements = {}
         excluded = False
         for message in original:
             if message.role == "user":
@@ -300,15 +446,59 @@ class AstrBotAdapter:
                         part.text for part in content if isinstance(part, TextPart)
                     )
                 )
-                excluded = self.settings.is_command_text(text)
+                excluded = filter_commands and self.settings.is_command_text(text)
+                if filter_robots and not excluded:
+                    # Match the host's identity reminder, never nicknames or a
+                    # user merely mentioning another account in ordinary text.
+                    sender = re.search(
+                        r"<system_reminder>User ID: (\d+), Nickname:", text
+                    )
+                    if sender:
+                        excluded = await self.is_group_robot(event, sender.group(1))
             if excluded:
                 removed.add(id(message))
             else:
-                retained.append(message)
-        if removed:
-            turn["command_history"] = (original, removed)
+                filtered = message
+                if filter_robots and message.role == "user":
+                    # Native group context is a nickname-only aggregate. Use the
+                    # filtered plugin observation rather than guessing authors.
+                    header = (
+                        "<system_reminder>You are in a group chat. "
+                        "Belows are group chat context after your last reply:\n"
+                        "--- BEGIN CONTEXT---\n"
+                    )
+                    pattern = (
+                        re.escape(header)
+                        + r".*?\n--- END CONTEXT ---\n</system_reminder>"
+                    )
+                    if isinstance(message.content, str):
+                        content = re.sub(pattern, "", message.content, flags=re.DOTALL)
+                    else:
+                        content = []
+                        for part in message.content or []:
+                            if isinstance(part, TextPart):
+                                text = re.sub(pattern, "", part.text, flags=re.DOTALL)
+                                if text != part.text:
+                                    if text:
+                                        content.append(
+                                            part.model_copy(update={"text": text})
+                                        )
+                                    continue
+                            content.append(part)
+                    if content != message.content:
+                        filtered = message.model_copy(
+                            update={"content": content or "[群聊观察见本轮资料]"}
+                        )
+                        replacements[id(filtered)] = message
+                retained.append(filtered)
+        if removed or replacements:
+            turn["command_history"] = (original, removed, replacements)
             run_context.messages = retained
-        self.log.debug("context.commands.filtered", removed_history_items=len(removed))
+        self.log.debug(
+            "context.input.filtered",
+            removed_history_items=len(removed),
+            replaced_items=len(replacements),
+        )
 
     def restore_agent_history(self, event, run_context):
         """Restore excluded rounds before the native history writer runs.
@@ -321,8 +511,10 @@ class AstrBotAdapter:
         saved = turn.pop("command_history", None) if turn else None
         if saved is None:
             return
-        original, removed = saved
-        messages = run_context.messages
+        original, removed, replacements = saved
+        messages = [
+            replacements.get(id(message), message) for message in run_context.messages
+        ]
         positions = {id(message): index for index, message in enumerate(messages)}
         insertions = {}
         position = len(messages)
@@ -340,7 +532,11 @@ class AstrBotAdapter:
             if index < len(messages):
                 restored.append(messages[index])
         run_context.messages = restored
-        self.log.debug("context.commands.restored", restored_history_items=len(removed))
+        self.log.debug(
+            "context.input.restored",
+            restored_history_items=len(removed),
+            restored_items=len(replacements),
+        )
 
     async def can_reply(self, event) -> bool:
         if isinstance(event, IdleEvent):
@@ -391,6 +587,22 @@ class AstrBotAdapter:
         Returns:
             Host request with conversation and media bound.
         """
+        # Remove confirmed bot quotations before native media extraction, and
+        # retain the filtered event through Agent construction. Turn cleanup
+        # restores the original object; native incoming persistence ran earlier.
+        turn = event.get_extra("humanization_turn")
+        if turn is not None and self.settings.recorder["filter_group_robots"]:
+            parts = []
+            for part in event.get_messages():
+                if isinstance(part, Reply) and await self.is_group_robot(
+                    event, str(part.sender_id or "")
+                ):
+                    continue
+                parts.append(part)
+            if len(parts) != len(event.get_messages()):
+                turn["robot_quote_message"] = event.message_obj
+                event.message_obj = copy.copy(event.message_obj)
+                event.message_obj.message = parts
         cfg = self.context.get_config(umo=event.unified_msg_origin)
         request, _ = await collect_initial_request(
             event,
@@ -401,6 +613,16 @@ class AstrBotAdapter:
                 provider_settings=cfg["provider_settings"],
             ),
         )
+        if request is None:
+            return None
+        if any(isinstance(part, Poke) for part in event.get_messages()):
+            description = self.snapshot(event).text
+            if not request.prompt:
+                request.prompt = description
+            else:
+                request.extra_user_content_parts.append(
+                    TextPart(text="本轮事件：" + description)
+                )
         if not request.prompt and not (
             request.image_urls or request.audio_urls or request.extra_user_content_parts
         ):

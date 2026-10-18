@@ -116,7 +116,7 @@ async def test_native_command_history_and_quote_are_filtered_without_changing_st
     assert [part.text for part in request.extra_user_content_parts] == ["other context"]
     event.set_extra("humanization_turn", {"phase": "agent"})
     run_context = SimpleNamespace(messages=bind_checkpoint_messages(request.contexts))
-    plugin.adapter.filter_agent_history(event, run_context)
+    await plugin.adapter.filter_agent_history(event, run_context)
     assert [message.role for message in run_context.messages] == [
         "user",
         "assistant",

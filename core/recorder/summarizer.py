@@ -9,12 +9,15 @@ from .diary import DiaryProtocol
 
 
 class Summarizer:
-    def __init__(self, storage, settings, generate, prompt: str, log):
+    def __init__(
+        self, storage, settings, generate, prompt: str, log, robot_record_filter=None
+    ):
         self.storage = storage
         self.settings = settings
         self.generate = generate
         self.prompt = prompt
         self.log = log
+        self.robot_record_filter = robot_record_filter
         self.lock = asyncio.Lock()
         self.active_scope = None
         self.resetting = set()
@@ -74,8 +77,12 @@ class Summarizer:
         selected = []
         size = 0
         clipped = False
+        filtered_seqs = set()
         for row in pending:
-            if self.settings.is_command_record(row):
+            if self.settings.is_command_record(row) or (
+                self.robot_record_filter and await self.robot_record_filter(row)
+            ):
+                filtered_seqs.add(row["seq"])
                 continue
             item = {
                 key: row[key]
@@ -109,7 +116,7 @@ class Summarizer:
                 cursor=pending[-1]["seq"],
                 summarized_count=pending[-1]["human_count"],
             )
-            self.log.debug("summary.commands.skipped", through_seq=pending[-1]["seq"])
+            self.log.debug("summary.filtered.skipped", through_seq=pending[-1]["seq"])
             return
         self.log.info(
             "summary.start",
@@ -132,7 +139,9 @@ class Summarizer:
                 session["scope"], session["cursor"], config["window"] - len(selected)
             )
             for row in preceding:
-                if self.settings.is_command_record(row):
+                if self.settings.is_command_record(row) or (
+                    self.robot_record_filter and await self.robot_record_filter(row)
+                ):
                     continue
                 item = {
                     key: row[key]
@@ -190,7 +199,7 @@ class Summarizer:
         for row in pending:
             if row["seq"] <= through:
                 continue
-            if not self.settings.is_command_record(row):
+            if row["seq"] not in filtered_seqs:
                 break
             through = row["seq"]
         count = next(row["human_count"] for row in pending if row["seq"] == through)

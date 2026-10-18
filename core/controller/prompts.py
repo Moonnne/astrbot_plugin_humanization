@@ -5,10 +5,11 @@ from pathlib import Path
 
 
 class Prompts:
-    def __init__(self, settings, storage, persona_manager):
+    def __init__(self, settings, storage, persona_manager, robot_record_filter=None):
         self.settings = settings
         self.storage = storage
         self.persona_manager = persona_manager
+        self.robot_record_filter = robot_record_filter
         root = Path(__file__).resolve().parents[2] / "resource" / "prompts"
         self.text = {
             name: (root / f"{name}.txt").read_text(encoding="utf-8")
@@ -77,6 +78,8 @@ class Prompts:
         remaining = self.settings.recorder["context_chars"]
         for row in reversed(rows):
             if self.settings.is_command_record(row):
+                continue
+            if self.robot_record_filter and await self.robot_record_filter(row):
                 continue
             if (
                 exclude_id

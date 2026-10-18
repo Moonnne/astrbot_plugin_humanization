@@ -148,15 +148,20 @@ class Settings:
                 return period.private if private else period.group
         return float(self.controller["private" if private else "group"])
 
-    def mentioned(self, text: str) -> bool:
+    def mentioned(self, text: str, segments: str | None = None) -> bool:
         """Recognize configured names without matching inside Latin words.
 
         Args:
             text: Rendered incoming message content.
+            segments: Structured content, excluding poke annotations from matching.
 
         Returns:
             Whether a name or alias appears in the message.
         """
+        if segments is not None:
+            parts = json.loads(segments)
+            if any(part["type"] == "poke" for part in parts):
+                text = "".join(part["text"] for part in parts if part["type"] == "text")
         for value in [self.controller["robot_name"], *self.controller["names"]]:
             name = value.strip()
             if not name:

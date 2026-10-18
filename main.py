@@ -122,6 +122,7 @@ class Humanization(Star):
 
     @filter.custom_filter(ScopeFilter, priority=maxsize)
     async def prepare_input(self, event: AstrMessageEvent):
+        await self.runtime.adapter.filter_group_robot(event)
         if self.runtime.settings.controller["enabled"]:
             self.runtime.adapter.suppress_empty_mention(event)
 
@@ -153,7 +154,7 @@ class Humanization(Star):
 
     @filter.on_agent_begin(priority=-10000)
     async def filter_agent_history(self, event, run_context):
-        self.runtime.adapter.filter_agent_history(event, run_context)
+        await self.runtime.adapter.filter_agent_history(event, run_context)
 
     @filter.on_agent_done(priority=-10000)
     async def restore_agent_history(self, event, run_context, response):

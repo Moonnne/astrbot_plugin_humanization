@@ -50,7 +50,7 @@ class Scheduler:
             isinstance(part, At) and str(part.qq) == message.self_id
             for part in event.get_messages()
         )
-        mentioned = self.settings.mentioned(message.text)
+        mentioned = self.settings.mentioned(message.text, message.segments)
         forced = self.settings.forced(direct, mentioned)
         consumed = max(
             state.reviewed,
@@ -131,7 +131,7 @@ class Scheduler:
         activity = self.settings.effective_activity(
             message.private,
             direct,
-            self.settings.mentioned(message.text),
+            self.settings.mentioned(message.text, message.segments),
             datetime.fromtimestamp(now, self.settings.timezone),
         )
         if not state.forced and activity == 0:
@@ -205,7 +205,7 @@ class Scheduler:
             state.sequence,
             state.forced,
             direct,
-            self.settings.mentioned(message.text),
+            self.settings.mentioned(message.text, message.segments),
         )
         if state.forced or not state.due:
             state.credit = Decimal(0)

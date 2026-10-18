@@ -35,10 +35,12 @@ from astrbot.core.star.star_handler import EventType, star_handlers_registry
     "enabled, compression",
     [(False, "none"), (True, "none"), (True, "truncate"), (True, "summary")],
 )
+@pytest.mark.parametrize("kind", ["command", "robot"])
 async def test_native_writer_preserves_commands_excluded_from_inference(
-    plugin, monkeypatch, enabled, compression
+    plugin, monkeypatch, enabled, compression, kind
 ):
-    plugin.settings.recorder["filter_commands"] = enabled
+    plugin.settings.recorder["filter_commands"] = enabled and kind == "command"
+    plugin.settings.recorder["filter_group_robots"] = enabled and kind == "robot"
     history = [
         {"role": "user", "content": "old ordinary discussion " * 250},
         {"role": "assistant", "content": "old ordinary response"},
@@ -47,6 +49,10 @@ async def test_native_writer_preserves_commands_excluded_from_inference(
         {"role": "user", "content": "recent ordinary discussion"},
         {"role": "assistant", "content": "recent ordinary response"},
     ]
+    if kind == "robot":
+        history[2]["content"] = (
+            "secret command\n<system_reminder>User ID: 777, Nickname: Robot</system_reminder>"
+        )
     conversation = SimpleNamespace(
         cid="native", history=json.dumps(history), token_usage=0
     )
@@ -57,10 +63,11 @@ async def test_native_writer_preserves_commands_excluded_from_inference(
         conversation=conversation,
     )
     event = Event(direct=True)
+    event.bot = SimpleNamespace(call_action=AsyncMock(return_value={"is_robot": True}))
     event.set_extra("humanization_turn", {"phase": "agent", "run": 1})
 
     async def begin(event, run_context):
-        plugin.adapter.filter_agent_history(event, run_context)
+        await plugin.adapter.filter_agent_history(event, run_context)
 
     async def done(event, run_context, response):
         plugin.adapter.record_main_usage(event)
@@ -568,7 +575,7 @@ async def test_abort_restores_commands_before_native_save(plugin):
         agent_hooks=Hooks(),
     )
     context.messages = original
-    plugin.adapter.filter_agent_history(event, context)
+    await plugin.adapter.filter_agent_history(event, context)
     await runner._finalize_aborted_step()
     assert context.messages[:3] == original
     assert "command_history" not in event.get_extra("humanization_turn")
