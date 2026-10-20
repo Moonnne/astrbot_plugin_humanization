@@ -23852,40 +23852,53 @@ html.overflow-y-hidden {
   }
 }
 /* Reuse the current conversation workspace's filter surface and spacing. */
-.filter-panel[data-v-5265c92b] { background: #f5f6f7; padding: 18px; min-width: 0;
+.filter-panel[data-v-3baa6c1c] { background: #f5f6f7; padding: 18px; min-width: 0;
 }
-.filter-panel.v-theme--dark[data-v-5265c92b] { background: rgba(var(--v-theme-on-surface), 0.06);
+.filter-panel.v-theme--dark[data-v-3baa6c1c] { background: rgba(var(--v-theme-on-surface), 0.06);
 }
-.type-options[data-v-5265c92b] { display: grid; gap: 7px; grid-template-columns: 1fr 1fr;
+.type-options[data-v-3baa6c1c] { display: grid; gap: 7px; grid-template-columns: 1fr 1fr;
 }
-.type-option[data-v-5265c92b] { align-items: center; background: rgb(var(--v-theme-surface)); border: 0; border-radius: 9px; color: rgba(var(--v-theme-on-surface), 0.7); cursor: pointer; display: flex; font-size: 0.76rem; gap: 5px; height: 34px; justify-content: center;
+.type-option[data-v-3baa6c1c] { align-items: center; background: rgb(var(--v-theme-surface)); border: 0; border-radius: 9px; color: rgba(var(--v-theme-on-surface), 0.7); cursor: pointer; display: flex; font-size: 0.76rem; gap: 5px; height: 34px; justify-content: center;
 }
-.type-option[data-v-5265c92b]:hover { color: rgb(var(--v-theme-on-surface));
+.type-option[data-v-3baa6c1c]:hover { color: rgb(var(--v-theme-on-surface));
 }
-.type-option--selected[data-v-5265c92b] { background: rgba(var(--v-theme-primary), 0.11); color: rgb(var(--v-theme-primary)); font-weight: 600;
+.type-option--selected[data-v-3baa6c1c] { background: rgba(var(--v-theme-primary), 0.11); color: rgb(var(--v-theme-primary)); font-weight: 600;
 }
-.type-option[data-v-5265c92b]:focus-visible { outline: 2px solid rgb(var(--v-theme-primary));
+.type-option[data-v-3baa6c1c]:focus-visible { outline: 2px solid rgb(var(--v-theme-primary));
 }
-.filter-label[data-v-5265c92b] { color: rgba(var(--v-theme-on-surface), 0.76); font-size: 0.75rem; font-weight: 600; margin-bottom: 8px;
+.filter-label[data-v-3baa6c1c] { color: rgba(var(--v-theme-on-surface), 0.76); font-size: 0.75rem; font-weight: 600; margin-bottom: 8px;
 }
-/* Keep buttons stationary when the multi-select's search input loses focus. */
-.filter-panel[data-v-5265c92b] .v-autocomplete .v-field__input { height: 96px; overflow-y: auto; align-content: flex-start;
+/* Grow only for selected chips, with a bounded scroll area for many sessions. */
+.session-select[data-v-3baa6c1c] .v-field__input { max-height: 80px; overflow-y: auto; align-content: flex-start;
 }
 
-.records-layout[data-v-fed55add] { display: flex; gap: 16px; align-items: flex-start; min-width: 0;
+.records-layout[data-v-1f89cea8] { display: flex; align-items: flex-start; min-width: 0;
 }
-.filter-column[data-v-fed55add] { flex: 0 0 280px; width: 280px; min-width: 0;
+/* Animate the occupied width, including the gutter; keep controls at full width. */
+.filter-column[data-v-1f89cea8] { flex: 0 0 auto; width: 296px; min-width: 0;
 }
-.records-list[data-v-fed55add] { flex: 1 1 0; min-width: 0;
+.filter-column[data-v-1f89cea8] .filter-panel { width: 280px;
 }
-.decision-state[data-v-fed55add] { min-width: 0; max-width: 100%;
+.filter-column.expand-x-transition-enter-active[data-v-1f89cea8],
+.filter-column.expand-x-transition-leave-active[data-v-1f89cea8] { transition-duration: 180ms !important;
 }
-.records-table[data-v-fed55add] tbody td { height: auto !important; padding-block: 12px; vertical-align: middle;
+.records-list[data-v-1f89cea8] { flex: 1 1 0; min-width: 0;
+}
+.decision-state[data-v-1f89cea8] { min-width: 0; max-width: 100%;
+}
+.records-table[data-v-1f89cea8] tbody td { height: auto !important; padding-block: 12px; vertical-align: middle;
 }
 @media (max-width: 800px) {
-.records-layout[data-v-fed55add] { flex-direction: column; align-items: stretch;
+.records-layout[data-v-1f89cea8] { flex-direction: column; align-items: stretch;
 }
-.filter-column[data-v-fed55add] { flex-basis: auto; width: 100%;
+.filter-column[data-v-1f89cea8] { width: 100%; margin-bottom: 16px;
+}
+.filter-column[data-v-1f89cea8] .filter-panel { width: 100%;
+}
+}
+@media (prefers-reduced-motion: reduce) {
+.filter-column.expand-x-transition-enter-active[data-v-1f89cea8],
+  .filter-column.expand-x-transition-leave-active[data-v-1f89cea8] { transition-duration: 0ms !important;
 }
 }
 

@@ -10,6 +10,7 @@ const bridge = inject('bridge');
 const defaults = {q:'', sessions:[], chat_type:'', start:'', end:'', kind:'', sender:'', component:'', reply:'', emotion:'', required:'', trigger:'', participant:'', bot_reply:'', coverage_gap:'', sort:'timestamp:desc'};
 const filters = reactive({...defaults, sessions:[]});
 const filtersOpen = ref(true);
+const sessionTitles = computed(() => Object.fromEntries(props.sessions.map(item => [item.umo,item.title])));
 const page = ref(1), limit = ref(25);
 const sort = computed({
   get() { const [key,order] = filters.sort.split(':'); return [{key,order}]; },
@@ -67,20 +68,23 @@ const detailFields = computed(() => {
   <v-alert v-if="error" type="error" variant="tonal" class="mb-4">{{ error }}</v-alert>
   <v-alert v-if="success" type="success" variant="tonal" closable class="mb-4" @click:close="success = ''">{{ success }}</v-alert>
   <div class="d-flex align-center flex-wrap ga-3 mb-4">
-    <v-btn :prepend-icon="mdiFilterVariant" :aria-expanded="filtersOpen" @click="filtersOpen = !filtersOpen">{{ filtersOpen ? '隐藏筛选' : '显示筛选' }}</v-btn>
+    <v-btn :prepend-icon="mdiFilterVariant" :aria-expanded="filtersOpen" aria-controls="record-filters" @click="filtersOpen = !filtersOpen">{{ filtersOpen ? '隐藏筛选' : '显示筛选' }}</v-btn>
     <div class="text-body-2 text-medium-emphasis flex-grow-1">共 {{ total }} 条 · 已选 {{ selected.length }} 条（当前页） · {{ timezone }}</div>
     <v-btn color="error" :prepend-icon="mdiDeleteOutline" :disabled="!selected.length || loading" @click="confirm = true">删除所选</v-btn>
   </div>
   <div class="records-layout">
     <v-expand-x-transition>
-      <div v-if="filtersOpen" class="filter-column">
-        <FilterPanel :category="category" :model="filters" :sessions="sessions" @collapse="filtersOpen = false" @reset="Object.assign(filters, defaults, {sessions:[]})" />
+      <div v-show="filtersOpen" id="record-filters" class="filter-column" :inert="!filtersOpen" :aria-hidden="!filtersOpen">
+        <FilterPanel :category="category" :model="filters" :sessions="sessions" :active="filtersOpen" @collapse="filtersOpen = false" @reset="Object.assign(filters, defaults, {sessions:[]})" />
       </div>
     </v-expand-x-transition>
     <v-card class="records-list" rounded="xl">
     <v-data-table-server v-model="selected" v-model:page="page" v-model:items-per-page="limit" v-model:sort-by="sort" class="records-table" :headers="headers" :items="rows" :items-length="total" :loading="loading" :items-per-page-options="[10,25,50,100]" item-value="key" show-select select-strategy="page" must-sort hover>
       <template #item.timestamp="{item}">{{ time(item.timestamp) }}</template>
-      <template #item.conversation="{item}"><span class="text-caption text-break">{{ item.conversation }}</span></template>
+      <template #item.conversation="{item}">
+        <div v-if="sessionTitles[item.conversation] && sessionTitles[item.conversation] !== item.conversation" class="text-body-2 text-break">{{ sessionTitles[item.conversation] }}</div>
+        <span class="text-caption text-break">{{ item.conversation }}</span>
+      </template>
       <template #item.headline="{item}"><span class="text-body-2 text-break">{{ item.headline?.slice(0,180) }}{{ item.headline?.length > 180 ? '…' : '' }}</span></template>
       <template #item.state="{item}">
         <span v-if="category === 'messages'" class="text-caption">{{ item.sender_name }}<br>{{ item.direction === 'out' ? '机器人回复' : item.sender_id }}</span>
@@ -120,13 +124,22 @@ const detailFields = computed(() => {
 </template>
 
 <style scoped>
-.records-layout { display: flex; gap: 16px; align-items: flex-start; min-width: 0; }
-.filter-column { flex: 0 0 280px; width: 280px; min-width: 0; }
+.records-layout { display: flex; align-items: flex-start; min-width: 0; }
+/* Animate the occupied width, including the gutter; keep controls at full width. */
+.filter-column { flex: 0 0 auto; width: 296px; min-width: 0; }
+.filter-column :deep(.filter-panel) { width: 280px; }
+.filter-column.expand-x-transition-enter-active,
+.filter-column.expand-x-transition-leave-active { transition-duration: 180ms !important; }
 .records-list { flex: 1 1 0; min-width: 0; }
 .decision-state { min-width: 0; max-width: 100%; }
 .records-table :deep(tbody td) { height: auto !important; padding-block: 12px; vertical-align: middle; }
 @media (max-width: 800px) {
   .records-layout { flex-direction: column; align-items: stretch; }
-  .filter-column { flex-basis: auto; width: 100%; }
+  .filter-column { width: 100%; margin-bottom: 16px; }
+  .filter-column :deep(.filter-panel) { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .filter-column.expand-x-transition-enter-active,
+  .filter-column.expand-x-transition-leave-active { transition-duration: 0ms !important; }
 }
 </style>

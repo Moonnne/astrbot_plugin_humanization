@@ -1,13 +1,20 @@
 <script setup>
+import { ref, watch } from 'vue';
 import { mdiMagnify, mdiChevronLeft, mdiFilterRemoveOutline } from '@mdi/js';
 import { emotions, outcomes } from './options.js';
-const props = defineProps({ category:String, model:Object, sessions:Array });
+const props = defineProps({ category:String, model:Object, sessions:Array, active:Boolean });
+const sessionMenu = ref(false);
+watch(() => props.active, active => { if (!active) sessionMenu.value = false; });
 defineEmits(['collapse','reset']);
 const all = {title:'全部',value:''};
 const components = [['text','文字'],['at','@ 提及'],['image','图片'],['video','视频'],['record','语音'],['file','文件'],['poke','戳一戳']].map(([value,title])=>({value,title}));
 const sorts = [['timestamp:desc','时间：从新到旧'],['timestamp:asc','时间：从旧到新'],['headline:asc','内容：正序'],['headline:desc','内容：倒序']].map(([value,title])=>({value,title}));
 function toggle(key,value) {
   props.model[key] = props.model[key] === value ? '' : value;
+}
+function matchSession(value, query, item) {
+  const search = query.toLocaleLowerCase();
+  return [item.raw.title,item.raw.umo].some(text => text.toLocaleLowerCase().includes(search));
 }
 </script>
 <template>
@@ -19,8 +26,13 @@ function toggle(key,value) {
     </div>
     <v-text-field v-model="model.q" label="搜索关键词" placeholder="搜索聊天、话题或记录" :prepend-inner-icon="mdiMagnify" clearable hide-details @click:clear="model.q = ''" />
     <v-divider class="my-5" />
-    <v-autocomplete v-model="model.sessions" label="会话" placeholder="搜索名称或 UMO，多选" :items="sessions" :item-title="item => item.title === item.umo ? item.umo : `${item.title} · ${item.umo}`" multiple chips closable-chips hide-details>
+    <v-autocomplete v-model="model.sessions" v-model:menu="sessionMenu" class="session-select" label="会话" placeholder="搜索名称或 UMO，多选" :items="sessions" item-title="title" :custom-filter="matchSession" :menu-props="{maxWidth:520}" density="compact" multiple chips closable-chips hide-details>
       <template #chip="{props,item}"><v-chip v-bind="props" class="text-truncate" max-width="100%" :title="item.raw.umo">{{ item.raw.title }}</v-chip></template>
+      <template #item="{props,item}">
+        <v-list-item v-bind="props" role="option" :title="item.raw.title" :subtitle="item.raw.umo">
+          <template #prepend="{isSelected}"><v-checkbox-btn :model-value="isSelected" :ripple="false" tabindex="-1" /></template>
+        </v-list-item>
+      </template>
     </v-autocomplete>
     <p v-if="!sessions.length" class="text-caption text-medium-emphasis mt-2">尚无已启用的会话</p>
     <p class="filter-label mt-5">对话类型</p>
@@ -70,6 +82,6 @@ function toggle(key,value) {
 .type-option--selected { background: rgba(var(--v-theme-primary), 0.11); color: rgb(var(--v-theme-primary)); font-weight: 600; }
 .type-option:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); }
 .filter-label { color: rgba(var(--v-theme-on-surface), 0.76); font-size: 0.75rem; font-weight: 600; margin-bottom: 8px; }
-/* Keep buttons stationary when the multi-select's search input loses focus. */
-.filter-panel :deep(.v-autocomplete .v-field__input) { height: 96px; overflow-y: auto; align-content: flex-start; }
+/* Grow only for selected chips, with a bounded scroll area for many sessions. */
+.session-select :deep(.v-field__input) { max-height: 80px; overflow-y: auto; align-content: flex-start; }
 </style>

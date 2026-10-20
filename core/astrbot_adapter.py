@@ -566,16 +566,26 @@ class AstrBotAdapter:
         return permitted
 
     async def session_options(self) -> dict[str, str]:
-        options = {}
         database = self.context.get_db()
-        for row in await database.get_umo_aliases():
+        rows = await database.get_umo_aliases()
+        options = {row.umo: row.user_alias or row.auto_name or row.umo for row in rows}
+        groups = {}
+        for row in rows:
             platform, kind, sid = row.umo.split(":", 2)
-            options[row.umo] = row.user_alias or row.auto_name or row.umo
             if kind == "GroupMessage":
                 prefix = row.creator_sender_id + "_"
                 group_id = sid.removeprefix(prefix)
                 group_umo = f"{platform}:GroupMessage:{group_id}"
-                options[group_umo] = f"群 {group_id}（{platform}）"
+                groups[group_umo] = (
+                    row.user_alias
+                    or row.auto_name
+                    or groups.get(group_umo)
+                    or f"群 {group_id}（{platform}）"
+                )
+        # Preserve exact-route aliases; isolated member routes also name the group.
+        for umo, name in groups.items():
+            if options.get(umo, umo) == umo:
+                options[umo] = name
         return options
 
     async def request(self, event):

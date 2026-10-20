@@ -95,15 +95,54 @@ try {
   await view.getByRole('tab',{name:'聊天',exact:true}).click();
   await expect(view.getByText('天气很好 1',{exact:true})).toBeVisible();
   await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeVisible();
+  if (process.argv.includes('--filter-regression')) {
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    const frame = page.frames().find(f=>f.url().includes('/view/'));
+    const fieldHeight = await view.getByLabel('会话',{exact:true}).evaluate(input=>input.closest('.v-field').getBoundingClientRect().height);
+    const recordCalls = await page.evaluate(()=>window.calls.filter(c=>c.endpoint === 'records').length);
+    async function measureToggle(button) {
+      const pending = frame.evaluate(() => new Promise(resolve => {
+        document.querySelector('[aria-expanded]').addEventListener('click', () => {
+          const start = performance.now(), samples = [];
+          function sample() {
+            samples.push({ms:performance.now()-start, left:document.querySelector('.records-list').getBoundingClientRect().left});
+            if (performance.now()-start < 450) requestAnimationFrame(sample);
+            else resolve(samples);
+          }
+          requestAnimationFrame(sample);
+        }, {once:true});
+      }));
+      await button.click();
+      return pending;
+    }
+    const collapse = await measureToggle(view.getByRole('button',{name:'隐藏筛选',exact:true}));
+    const expand = await measureToggle(view.getByRole('button',{name:'显示筛选',exact:true}));
+    const moved = samples=>samples.filter(s=>s.left > 30 && s.left < 310).length;
+    console.log(JSON.stringify({fieldHeight, collapseIntermediateFrames:moved(collapse), expandIntermediateFrames:moved(expand), collapseStarts:collapse.find(s=>s.left < 319)?.ms, collapseEnds:collapse.find(s=>s.left < 30)?.ms}));
+    expect(fieldHeight, 'Empty session selector should stay compact').toBeLessThanOrEqual(60);
+    expect(moved(collapse), 'Collapsing should move the list through intermediate positions').toBeGreaterThan(2);
+    expect(moved(expand), 'Expanding should move the list through intermediate positions').toBeGreaterThan(2);
+    expect(collapse.find(s=>s.left < 30)?.ms, 'Collapsed layout should settle promptly').toBeLessThan(280);
+    expect(await page.evaluate(()=>window.calls.filter(c=>c.endpoint === 'records').length)).toBe(recordCalls);
+  }
   await view.getByRole('button',{name:'折叠筛选栏'}).click();
-  await expect(view.getByRole('complementary',{name:'数据筛选'})).toHaveCount(0);
+  await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeHidden();
   await view.getByRole('button',{name:'显示筛选',exact:true}).click();
-  await view.getByLabel('会话',{exact:true}).fill('测试群');
+  await view.getByLabel('会话',{exact:true}).fill('GroupMessage:123');
   await view.getByRole('option',{name:/测试群/}).click();
   await view.getByLabel('会话',{exact:true}).fill('测试私聊');
   await view.getByRole('option',{name:/测试私聊/}).click();
   await view.getByLabel('会话',{exact:true}).press('Escape');
   await expect(view.getByRole('listbox')).toBeHidden();
+  expect(await view.getByLabel('会话',{exact:true}).evaluate(input=>input.closest('.v-field').getBoundingClientRect().height)).toBeLessThanOrEqual(82);
+  await view.getByLabel('会话',{exact:true}).click();
+  await expect(view.getByRole('listbox')).toBeVisible();
+  await page.screenshot({path:join(output,'session-picker.png'),animations:'disabled'});
+  await view.getByRole('button',{name:'隐藏筛选',exact:true}).click();
+  await expect(view.getByRole('listbox')).toBeHidden();
+  await view.getByRole('button',{name:'显示筛选',exact:true}).click();
+  await expect(view.getByText('测试群',{exact:true}).first()).toBeVisible();
+  await page.screenshot({path:join(output,'filters.png'),animations:'disabled'});
   await view.getByRole('button',{name:'群聊',exact:true}).click();
   await expect(view.getByRole('button',{name:'群聊',exact:true})).toHaveAttribute('aria-pressed','true');
   await expect(view.getByRole('button',{name:'私聊',exact:true})).toHaveCSS('background-color','rgb(255, 255, 255)');
@@ -215,6 +254,13 @@ try {
   await expect(view.getByRole('heading',{name:'Humanization'})).toHaveCSS('color','rgb(232, 234, 237)');
   await page.screenshot({path:join(output,'mobile-settings.png')});
   expect(await iframe.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+  await view.getByRole('tab',{name:'聊天',exact:true}).click();
+  await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeVisible();
+  await page.screenshot({path:join(output,'mobile-filters.png'),animations:'disabled'});
+  expect(await iframe.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await view.getByRole('button',{name:'隐藏筛选',exact:true}).click();
+  await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeHidden();
   expect(errors).toEqual([]);
   console.log(`Sandbox bridge UI checks passed. Screenshots: ${output}`);
 } finally {

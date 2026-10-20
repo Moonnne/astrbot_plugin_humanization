@@ -85,8 +85,7 @@ class Dashboard:
                 )
             )[0]
         configured = self.runtime.settings.scope
-        item = self.plugin.config.schema["scope"]["items"]["sessions"]
-        labels = dict(zip(item.get("options", []), item.get("labels", [])))
+        labels = await self.runtime.adapter.session_options()
         sessions = {self.conversation(row["scope"]) for row in scopes}
         sessions.update(configured["sessions"] + configured["manual_sessions"])
         sessions = {umo for umo in sessions if self.runtime.settings.selected(umo, umo)}

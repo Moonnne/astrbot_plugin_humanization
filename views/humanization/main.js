@@ -6,12 +6,14 @@ import { VAutocomplete } from 'vuetify/components/VAutocomplete';
 import { VBtn } from 'vuetify/components/VBtn';
 import { VCard, VCardActions, VCardText, VCardTitle } from 'vuetify/components/VCard';
 import { VChip } from 'vuetify/components/VChip';
+import { VCheckboxBtn } from 'vuetify/components/VCheckbox';
 import { VCombobox } from 'vuetify/components/VCombobox';
 import { VDataTableServer } from 'vuetify/components/VDataTable';
 import { VDialog } from 'vuetify/components/VDialog';
 import { VDivider } from 'vuetify/components/VDivider';
 import { VIcon } from 'vuetify/components/VIcon';
 import { VMain } from 'vuetify/components/VMain';
+import { VListItem } from 'vuetify/components/VList';
 import { VProgressLinear } from 'vuetify/components/VProgressLinear';
 import { VContainer, VRow, VCol, VSpacer } from 'vuetify/components/VGrid';
 import { VSelect } from 'vuetify/components/VSelect';
@@ -31,7 +33,7 @@ import App from './App.vue';
 const vuetify = createVuetify({
   components: {
     VApp, VAlert, VAutocomplete, VBtn, VCard, VCardActions, VCardText, VCardTitle,
-    VChip, VCombobox, VDataTableServer, VDialog, VDivider, VIcon, VMain,
+    VChip, VCheckboxBtn, VCombobox, VDataTableServer, VDialog, VDivider, VIcon, VMain, VListItem,
     VProgressLinear, VContainer, VRow, VCol, VSpacer, VSelect, VSlider,
     VSnackbar, VSwitch, VTable, VTextField, VTextarea, VExpandXTransition,
   },

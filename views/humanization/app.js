@@ -1,4 +1,4 @@
-import { r as resolveComponent, o as openBlock, c as createElementBlock, a as createVNode, w as withCtx, F as Fragment, b as renderList, d as createBaseVNode, t as toDisplayString, e as createTextVNode, f as computed, g as createCommentVNode, h as createBlock, u as unref, m as mdiFilterRemoveOutline, i as mdiChevronLeft, j as mdiMagnify, k as mergeProps, n as normalizeClass, p as pushScopeId, l as popScopeId, q as inject, s as reactive, v as ref, x as watch, y as onBeforeUnmount, z as mdiFilterVariant, A as mdiDeleteOutline, B as mdiEyeOutline, C as mdiPlus, D as onMounted, E as mdiRefresh, G as mdiContentSaveOutline, H as mdiDeleteAlertOutline, I as mdiAlertCircleOutline, J as mdiChartBar, K as mdiMessageTextOutline, L as mdiHeartOutline, M as mdiForumOutline, N as mdiBookOpenPageVariantOutline, O as mdiCogOutline, P as mdiClose, Q as createVuetify, R as createApp, S as zhHans, T as mdi, U as aliases, V as VExpandXTransition, W as VTextarea, X as VTextField, Y as VTable, Z as VSwitch, _ as VSnackbar, $ as VSlider, a0 as VSelect, a1 as VSpacer, a2 as VCol, a3 as VRow, a4 as VContainer, a5 as VProgressLinear, a6 as VMain, a7 as VIcon, a8 as VDivider, a9 as VDialog, aa as VDataTableServer, ab as VCombobox, ac as VChip, ad as VCardTitle, ae as VCardText, af as VCardActions, ag as VCard, ah as VBtn, ai as VAutocomplete, aj as VAlert, ak as VApp } from "./assets/vendor.js";
+import { r as resolveComponent, o as openBlock, c as createElementBlock, a as createVNode, w as withCtx, F as Fragment, b as renderList, d as createBaseVNode, t as toDisplayString, e as createTextVNode, f as computed, g as createCommentVNode, h as createBlock, i as ref, j as watch, u as unref, m as mdiFilterRemoveOutline, k as mdiChevronLeft, l as mdiMagnify, n as mergeProps, p as normalizeClass, q as pushScopeId, s as popScopeId, v as inject, x as reactive, y as onBeforeUnmount, z as mdiFilterVariant, A as mdiDeleteOutline, B as withDirectives, C as vShow, D as mdiEyeOutline, E as mdiPlus, G as onMounted, H as mdiRefresh, I as mdiContentSaveOutline, J as mdiDeleteAlertOutline, K as mdiAlertCircleOutline, L as mdiChartBar, M as mdiMessageTextOutline, N as mdiHeartOutline, O as mdiForumOutline, P as mdiBookOpenPageVariantOutline, Q as mdiCogOutline, R as mdiClose, S as createVuetify, T as createApp, U as zhHans, V as mdi, W as aliases, X as VExpandXTransition, Y as VTextarea, Z as VTextField, _ as VTable, $ as VSwitch, a0 as VSnackbar, a1 as VSlider, a2 as VSelect, a3 as VSpacer, a4 as VCol, a5 as VRow, a6 as VContainer, a7 as VProgressLinear, a8 as VListItem, a9 as VMain, aa as VIcon, ab as VDivider, ac as VDialog, ad as VDataTableServer, ae as VCombobox, af as VCheckboxBtn, ag as VChip, ah as VCardTitle, ai as VCardText, aj as VCardActions, ak as VCard, al as VBtn, am as VAutocomplete, an as VAlert, ao as VApp } from "./assets/vendor.js";
 const _hoisted_1$6 = { class: "text-body-2 text-medium-emphasis mb-3" };
 const _hoisted_2$6 = { class: "text-h4 font-weight-bold" };
 const _sfc_main$6 = {
@@ -157,7 +157,7 @@ const _export_sfc = (sfc, props) => {
   }
   return target;
 };
-const _withScopeId$2 = (n) => (pushScopeId("data-v-5265c92b"), n = n(), popScopeId(), n);
+const _withScopeId$2 = (n) => (pushScopeId("data-v-3baa6c1c"), n = n(), popScopeId(), n);
 const _hoisted_1$4 = { class: "d-flex align-center ga-1 mb-4" };
 const _hoisted_2$4 = /* @__PURE__ */ _withScopeId$2(() => /* @__PURE__ */ createBaseVNode("span", { class: "text-subtitle-1 font-weight-bold flex-grow-1" }, "筛选", -1));
 const _hoisted_3$4 = {
@@ -175,21 +175,31 @@ const _hoisted_11$1 = { class: "type-options mb-4" };
 const _hoisted_12$1 = ["aria-pressed", "onClick"];
 const _sfc_main$4 = {
   __name: "FilterPanel",
-  props: { category: String, model: Object, sessions: Array },
+  props: { category: String, model: Object, sessions: Array, active: Boolean },
   emits: ["collapse", "reset"],
   setup(__props) {
     const props = __props;
+    const sessionMenu = ref(false);
+    watch(() => props.active, (active) => {
+      if (!active) sessionMenu.value = false;
+    });
     const all = { title: "全部", value: "" };
     const components = [["text", "文字"], ["at", "@ 提及"], ["image", "图片"], ["video", "视频"], ["record", "语音"], ["file", "文件"], ["poke", "戳一戳"]].map(([value, title]) => ({ value, title }));
     const sorts = [["timestamp:desc", "时间：从新到旧"], ["timestamp:asc", "时间：从旧到新"], ["headline:asc", "内容：正序"], ["headline:desc", "内容：倒序"]].map(([value, title]) => ({ value, title }));
     function toggle(key, value) {
       props.model[key] = props.model[key] === value ? "" : value;
     }
+    function matchSession(value, query, item) {
+      const search = query.toLocaleLowerCase();
+      return [item.raw.title, item.raw.umo].some((text) => text.toLocaleLowerCase().includes(search));
+    }
     return (_ctx, _cache) => {
       const _component_v_btn = resolveComponent("v-btn");
       const _component_v_text_field = resolveComponent("v-text-field");
       const _component_v_divider = resolveComponent("v-divider");
       const _component_v_chip = resolveComponent("v-chip");
+      const _component_v_checkbox_btn = resolveComponent("v-checkbox-btn");
+      const _component_v_list_item = resolveComponent("v-list-item");
       const _component_v_autocomplete = resolveComponent("v-autocomplete");
       const _component_v_select = resolveComponent("v-select");
       const _component_v_card = resolveComponent("v-card");
@@ -232,10 +242,16 @@ const _sfc_main$4 = {
           createVNode(_component_v_autocomplete, {
             modelValue: __props.model.sessions,
             "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => __props.model.sessions = $event),
+            menu: sessionMenu.value,
+            "onUpdate:menu": _cache[5] || (_cache[5] = ($event) => sessionMenu.value = $event),
+            class: "session-select",
             label: "会话",
             placeholder: "搜索名称或 UMO，多选",
             items: __props.sessions,
-            "item-title": (item) => item.title === item.umo ? item.umo : `${item.title} · ${item.umo}`,
+            "item-title": "title",
+            "custom-filter": matchSession,
+            "menu-props": { maxWidth: 520 },
+            density: "compact",
             multiple: "",
             chips: "",
             "closable-chips": "",
@@ -253,8 +269,24 @@ const _sfc_main$4 = {
                 _: 2
               }, 1040, ["title"])
             ]),
+            item: withCtx(({ props: props2, item }) => [
+              createVNode(_component_v_list_item, mergeProps(props2, {
+                role: "option",
+                title: item.raw.title,
+                subtitle: item.raw.umo
+              }), {
+                prepend: withCtx(({ isSelected }) => [
+                  createVNode(_component_v_checkbox_btn, {
+                    "model-value": isSelected,
+                    ripple: false,
+                    tabindex: "-1"
+                  }, null, 8, ["model-value"])
+                ]),
+                _: 2
+              }, 1040, ["title", "subtitle"])
+            ]),
             _: 1
-          }, 8, ["modelValue", "items", "item-title"]),
+          }, 8, ["modelValue", "menu", "items"]),
           !__props.sessions.length ? (openBlock(), createElementBlock("p", _hoisted_3$4, "尚无已启用的会话")) : createCommentVNode("", true),
           _hoisted_4$4,
           createBaseVNode("div", _hoisted_5$3, [
@@ -284,14 +316,14 @@ const _sfc_main$4 = {
             ]),
             createVNode(_component_v_text_field, {
               modelValue: __props.model.sender,
-              "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => __props.model.sender = $event),
+              "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => __props.model.sender = $event),
               label: "发送者昵称或 ID",
               "hide-details": "",
               class: "mb-4"
             }, null, 8, ["modelValue"]),
             createVNode(_component_v_select, {
               modelValue: __props.model.component,
-              "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => __props.model.component = $event),
+              "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => __props.model.component = $event),
               label: "消息内容类型",
               items: [all, ...unref(components)],
               "hide-details": ""
@@ -311,7 +343,7 @@ const _sfc_main$4 = {
             ]),
             createVNode(_component_v_select, {
               modelValue: __props.model.kind,
-              "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => __props.model.kind = $event),
+              "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => __props.model.kind = $event),
               label: "执行状态",
               items: [all, ...unref(outcomes)],
               "hide-details": "",
@@ -319,7 +351,7 @@ const _sfc_main$4 = {
             }, null, 8, ["modelValue", "items"]),
             createVNode(_component_v_select, {
               modelValue: __props.model.emotion,
-              "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => __props.model.emotion = $event),
+              "onUpdate:modelValue": _cache[9] || (_cache[9] = ($event) => __props.model.emotion = $event),
               label: "规划情绪",
               items: [all, ...unref(emotions)],
               "hide-details": "",
@@ -327,7 +359,7 @@ const _sfc_main$4 = {
             }, null, 8, ["modelValue", "items"]),
             createVNode(_component_v_select, {
               modelValue: __props.model.trigger,
-              "onUpdate:modelValue": _cache[9] || (_cache[9] = ($event) => __props.model.trigger = $event),
+              "onUpdate:modelValue": _cache[10] || (_cache[10] = ($event) => __props.model.trigger = $event),
               label: "触发来源",
               items: [all, { title: "聊天消息", value: "message" }, { title: "空闲主动", value: "idle" }],
               "hide-details": "",
@@ -335,7 +367,7 @@ const _sfc_main$4 = {
             }, null, 8, ["modelValue", "items"]),
             createVNode(_component_v_select, {
               modelValue: __props.model.required,
-              "onUpdate:modelValue": _cache[10] || (_cache[10] = ($event) => __props.model.required = $event),
+              "onUpdate:modelValue": _cache[11] || (_cache[11] = ($event) => __props.model.required = $event),
               label: "是否必回复",
               items: [all, { title: "必回复", value: "1" }, { title: "普通评估", value: "0" }],
               "hide-details": ""
@@ -343,21 +375,21 @@ const _sfc_main$4 = {
           ], 64)) : __props.category === "topics" ? (openBlock(), createElementBlock(Fragment, { key: 3 }, [
             createVNode(_component_v_text_field, {
               modelValue: __props.model.participant,
-              "onUpdate:modelValue": _cache[11] || (_cache[11] = ($event) => __props.model.participant = $event),
+              "onUpdate:modelValue": _cache[12] || (_cache[12] = ($event) => __props.model.participant = $event),
               label: "参与者或参与行为",
               "hide-details": "",
               class: "mb-4"
             }, null, 8, ["modelValue"]),
             createVNode(_component_v_text_field, {
               modelValue: __props.model.bot_reply,
-              "onUpdate:modelValue": _cache[12] || (_cache[12] = ($event) => __props.model.bot_reply = $event),
+              "onUpdate:modelValue": _cache[13] || (_cache[13] = ($event) => __props.model.bot_reply = $event),
               label: "我的行为关键词",
               "hide-details": ""
             }, null, 8, ["modelValue"])
           ], 64)) : (openBlock(), createElementBlock(Fragment, { key: 4 }, [
             createVNode(_component_v_select, {
               modelValue: __props.model.kind,
-              "onUpdate:modelValue": _cache[13] || (_cache[13] = ($event) => __props.model.kind = $event),
+              "onUpdate:modelValue": _cache[14] || (_cache[14] = ($event) => __props.model.kind = $event),
               label: "日记状态",
               items: [all, { title: "未封存", value: "0" }, { title: "已封存", value: "1" }],
               "hide-details": "",
@@ -365,7 +397,7 @@ const _sfc_main$4 = {
             }, null, 8, ["modelValue", "items"]),
             createVNode(_component_v_select, {
               modelValue: __props.model.coverage_gap,
-              "onUpdate:modelValue": _cache[14] || (_cache[14] = ($event) => __props.model.coverage_gap = $event),
+              "onUpdate:modelValue": _cache[15] || (_cache[15] = ($event) => __props.model.coverage_gap = $event),
               label: "消息覆盖",
               items: [all, { title: "无缺口标记", value: "0" }, { title: "存在缺口", value: "1" }],
               "hide-details": ""
@@ -374,7 +406,7 @@ const _sfc_main$4 = {
           createVNode(_component_v_divider, { class: "my-5" }),
           createVNode(_component_v_text_field, {
             modelValue: __props.model.start,
-            "onUpdate:modelValue": _cache[15] || (_cache[15] = ($event) => __props.model.start = $event),
+            "onUpdate:modelValue": _cache[16] || (_cache[16] = ($event) => __props.model.start = $event),
             type: "date",
             label: "开始日期",
             "hide-details": "",
@@ -382,7 +414,7 @@ const _sfc_main$4 = {
           }, null, 8, ["modelValue"]),
           createVNode(_component_v_text_field, {
             modelValue: __props.model.end,
-            "onUpdate:modelValue": _cache[16] || (_cache[16] = ($event) => __props.model.end = $event),
+            "onUpdate:modelValue": _cache[17] || (_cache[17] = ($event) => __props.model.end = $event),
             type: "date",
             label: "结束日期",
             "hide-details": "",
@@ -390,7 +422,7 @@ const _sfc_main$4 = {
           }, null, 8, ["modelValue"]),
           createVNode(_component_v_select, {
             modelValue: __props.model.sort,
-            "onUpdate:modelValue": _cache[17] || (_cache[17] = ($event) => __props.model.sort = $event),
+            "onUpdate:modelValue": _cache[18] || (_cache[18] = ($event) => __props.model.sort = $event),
             label: "排序",
             items: unref(sorts),
             "hide-details": ""
@@ -401,42 +433,43 @@ const _sfc_main$4 = {
     };
   }
 };
-const FilterPanel = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["__scopeId", "data-v-5265c92b"]]);
-const _withScopeId$1 = (n) => (pushScopeId("data-v-fed55add"), n = n(), popScopeId(), n);
+const FilterPanel = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["__scopeId", "data-v-3baa6c1c"]]);
+const _withScopeId$1 = (n) => (pushScopeId("data-v-1f89cea8"), n = n(), popScopeId(), n);
 const _hoisted_1$3 = { class: "d-flex align-center flex-wrap ga-3 mb-4" };
 const _hoisted_2$3 = { class: "text-body-2 text-medium-emphasis flex-grow-1" };
 const _hoisted_3$3 = { class: "records-layout" };
-const _hoisted_4$3 = {
+const _hoisted_4$3 = ["inert", "aria-hidden"];
+const _hoisted_5$2 = {
   key: 0,
-  class: "filter-column"
+  class: "text-body-2 text-break"
 };
-const _hoisted_5$2 = { class: "text-caption text-break" };
-const _hoisted_6$2 = { class: "text-body-2 text-break" };
-const _hoisted_7$2 = {
+const _hoisted_6$2 = { class: "text-caption text-break" };
+const _hoisted_7$2 = { class: "text-body-2 text-break" };
+const _hoisted_8$1 = {
   key: 0,
   class: "text-caption"
 };
-const _hoisted_8$1 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createBaseVNode("br", null, null, -1));
-const _hoisted_9 = {
+const _hoisted_9 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createBaseVNode("br", null, null, -1));
+const _hoisted_10 = {
   key: 1,
   class: "decision-state d-flex flex-column align-start ga-1 py-1"
 };
-const _hoisted_10 = { class: "text-caption text-break" };
 const _hoisted_11 = { class: "text-caption text-break" };
-const _hoisted_12 = { key: 2 };
-const _hoisted_13 = {
+const _hoisted_12 = { class: "text-caption text-break" };
+const _hoisted_13 = { key: 2 };
+const _hoisted_14 = {
   key: 3,
   class: "text-caption"
 };
-const _hoisted_14 = {
+const _hoisted_15 = {
   key: 0,
   class: "mt-3"
 };
-const _hoisted_15 = {
+const _hoisted_16 = {
   key: 1,
   class: "mt-3"
 };
-const _hoisted_16 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createBaseVNode("p", { class: "mt-3" }, "仅处理插件数据，不清除 AstrBot 原生对话。正在回复或整理时会拒绝删除，请稍后重试。", -1));
+const _hoisted_17 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createBaseVNode("p", { class: "mt-3" }, "仅处理插件数据，不清除 AstrBot 原生对话。正在回复或整理时会拒绝删除，请稍后重试。", -1));
 const _sfc_main$3 = {
   __name: "Records",
   props: { category: String, sessions: Array, refresh: Number, timezone: String },
@@ -447,6 +480,7 @@ const _sfc_main$3 = {
     const defaults = { q: "", sessions: [], chat_type: "", start: "", end: "", kind: "", sender: "", component: "", reply: "", emotion: "", required: "", trigger: "", participant: "", bot_reply: "", coverage_gap: "", sort: "timestamp:desc" };
     const filters = reactive({ ...defaults, sessions: [] });
     const filtersOpen = ref(true);
+    const sessionTitles = computed(() => Object.fromEntries(props.sessions.map((item) => [item.umo, item.title])));
     const page = ref(1), limit = ref(25);
     const sort = computed({
       get() {
@@ -572,6 +606,7 @@ const _sfc_main$3 = {
           createVNode(_component_v_btn, {
             "prepend-icon": unref(mdiFilterVariant),
             "aria-expanded": filtersOpen.value,
+            "aria-controls": "record-filters",
             onClick: _cache[1] || (_cache[1] = ($event) => filtersOpen.value = !filtersOpen.value)
           }, {
             default: withCtx(() => [
@@ -595,15 +630,23 @@ const _sfc_main$3 = {
         createBaseVNode("div", _hoisted_3$3, [
           createVNode(_component_v_expand_x_transition, null, {
             default: withCtx(() => [
-              filtersOpen.value ? (openBlock(), createElementBlock("div", _hoisted_4$3, [
+              withDirectives(createBaseVNode("div", {
+                id: "record-filters",
+                class: "filter-column",
+                inert: !filtersOpen.value,
+                "aria-hidden": !filtersOpen.value
+              }, [
                 createVNode(FilterPanel, {
                   category: __props.category,
                   model: filters,
                   sessions: __props.sessions,
+                  active: filtersOpen.value,
                   onCollapse: _cache[3] || (_cache[3] = ($event) => filtersOpen.value = false),
                   onReset: _cache[4] || (_cache[4] = ($event) => Object.assign(filters, defaults, { sessions: [] }))
-                }, null, 8, ["category", "model", "sessions"])
-              ])) : createCommentVNode("", true)
+                }, null, 8, ["category", "model", "sessions", "active"])
+              ], 8, _hoisted_4$3), [
+                [vShow, filtersOpen.value]
+              ])
             ]),
             _: 1
           }),
@@ -637,22 +680,23 @@ const _sfc_main$3 = {
                   createTextVNode(toDisplayString(time(item.timestamp)), 1)
                 ]),
                 "item.conversation": withCtx(({ item }) => [
-                  createBaseVNode("span", _hoisted_5$2, toDisplayString(item.conversation), 1)
+                  sessionTitles.value[item.conversation] && sessionTitles.value[item.conversation] !== item.conversation ? (openBlock(), createElementBlock("div", _hoisted_5$2, toDisplayString(sessionTitles.value[item.conversation]), 1)) : createCommentVNode("", true),
+                  createBaseVNode("span", _hoisted_6$2, toDisplayString(item.conversation), 1)
                 ]),
                 "item.headline": withCtx(({ item }) => {
                   var _a, _b;
                   return [
-                    createBaseVNode("span", _hoisted_6$2, toDisplayString((_a = item.headline) == null ? void 0 : _a.slice(0, 180)) + toDisplayString(((_b = item.headline) == null ? void 0 : _b.length) > 180 ? "…" : ""), 1)
+                    createBaseVNode("span", _hoisted_7$2, toDisplayString((_a = item.headline) == null ? void 0 : _a.slice(0, 180)) + toDisplayString(((_b = item.headline) == null ? void 0 : _b.length) > 180 ? "…" : ""), 1)
                   ];
                 }),
                 "item.state": withCtx(({ item }) => {
                   var _a, _b;
                   return [
-                    __props.category === "messages" ? (openBlock(), createElementBlock("span", _hoisted_7$2, [
+                    __props.category === "messages" ? (openBlock(), createElementBlock("span", _hoisted_8$1, [
                       createTextVNode(toDisplayString(item.sender_name), 1),
-                      _hoisted_8$1,
+                      _hoisted_9,
                       createTextVNode(toDisplayString(item.direction === "out" ? "机器人回复" : item.sender_id), 1)
-                    ])) : __props.category === "decisions" ? (openBlock(), createElementBlock("div", _hoisted_9, [
+                    ])) : __props.category === "decisions" ? (openBlock(), createElementBlock("div", _hoisted_10, [
                       createVNode(_component_v_chip, {
                         size: "small",
                         color: item.decision_json.reply ? "primary" : void 0
@@ -662,9 +706,9 @@ const _sfc_main$3 = {
                         ]),
                         _: 2
                       }, 1032, ["color"]),
-                      createBaseVNode("span", _hoisted_10, toDisplayString(((_a = unref(emotions).find((e) => e.value === item.decision_json.emotion.primary)) == null ? void 0 : _a.title) || item.decision_json.emotion.primary), 1),
-                      createBaseVNode("span", _hoisted_11, toDisplayString(((_b = unref(outcomes).find((o) => o.value === item.outcome)) == null ? void 0 : _b.title) || item.outcome), 1)
-                    ])) : __props.category === "diaries" ? (openBlock(), createElementBlock("span", _hoisted_12, toDisplayString(item.sealed ? "已封存" : "未封存") + " · " + toDisplayString(item.topic_count) + " 个话题", 1)) : (openBlock(), createElementBlock("span", _hoisted_13, toDisplayString(item.day), 1))
+                      createBaseVNode("span", _hoisted_11, toDisplayString(((_a = unref(emotions).find((e) => e.value === item.decision_json.emotion.primary)) == null ? void 0 : _a.title) || item.decision_json.emotion.primary), 1),
+                      createBaseVNode("span", _hoisted_12, toDisplayString(((_b = unref(outcomes).find((o) => o.value === item.outcome)) == null ? void 0 : _b.title) || item.outcome), 1)
+                    ])) : __props.category === "diaries" ? (openBlock(), createElementBlock("span", _hoisted_13, toDisplayString(item.sealed ? "已封存" : "未封存") + " · " + toDisplayString(item.topic_count) + " 个话题", 1)) : (openBlock(), createElementBlock("span", _hoisted_14, toDisplayString(item.day), 1))
                   ];
                 }),
                 "item.actions": withCtx(({ item }) => [
@@ -749,9 +793,9 @@ const _sfc_main$3 = {
                 createVNode(_component_v_card_text, null, {
                   default: withCtx(() => [
                     createTextVNode(" 将永久删除所选 " + toDisplayString(selected.value.length) + " 条" + toDisplayString(titles[__props.category]) + "。 ", 1),
-                    __props.category === "diaries" ? (openBlock(), createElementBlock("p", _hoisted_14, "这些日期下的话题会一并删除。")) : createCommentVNode("", true),
-                    __props.category === "messages" ? (openBlock(), createElementBlock("p", _hoisted_15, "已有日记仍保留，消息累计序号不回退。当前群聊消息不足门槛时，会重新进入观察期。")) : createCommentVNode("", true),
-                    _hoisted_16
+                    __props.category === "diaries" ? (openBlock(), createElementBlock("p", _hoisted_15, "这些日期下的话题会一并删除。")) : createCommentVNode("", true),
+                    __props.category === "messages" ? (openBlock(), createElementBlock("p", _hoisted_16, "已有日记仍保留，消息累计序号不回退。当前群聊消息不足门槛时，会重新进入观察期。")) : createCommentVNode("", true),
+                    _hoisted_17
                   ]),
                   _: 1
                 }),
@@ -790,7 +834,7 @@ const _sfc_main$3 = {
     };
   }
 };
-const Records = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["__scopeId", "data-v-fed55add"]]);
+const Records = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["__scopeId", "data-v-1f89cea8"]]);
 const _hoisted_1$2 = {
   key: 0,
   class: "mb-5"
@@ -1607,12 +1651,14 @@ const vuetify = createVuetify({
     VCardText,
     VCardTitle,
     VChip,
+    VCheckboxBtn,
     VCombobox,
     VDataTableServer,
     VDialog,
     VDivider,
     VIcon,
     VMain,
+    VListItem,
     VProgressLinear,
     VContainer,
     VRow,

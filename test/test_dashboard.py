@@ -47,6 +47,9 @@ async def invoke(handler, *, query=None, body=None, username="admin"):
 
 @pytest.fixture
 async def dashboard(plugin, tmp_path, config):
+    plugin.context.get_db = lambda: SimpleNamespace(
+        get_umo_aliases=AsyncMock(return_value=[])
+    )
     schema = json.loads(
         (Path(__file__).resolve().parents[1] / "_conf_schema.json").read_text(
             encoding="utf-8"
@@ -212,6 +215,39 @@ async def test_session_choices_use_enabled_range_and_stats_accept_umo(dashboard)
     assert [item["value"] for item in result["sessions"]] == [
         "onebot:FriendMessage:456"
     ]
+
+
+@pytest.mark.parametrize("session_id", ["123", "42_123"])
+@pytest.mark.parametrize("user_alias", ["", "自定义群名"])
+async def test_group_choices_keep_native_names(dashboard, session_id, user_alias):
+    aliases = AsyncMock(
+        return_value=[
+            SimpleNamespace(
+                umo=f"onebot:GroupMessage:{session_id}",
+                creator_sender_id="42",
+                user_alias=user_alias,
+                auto_name="测试群名称",
+            )
+        ]
+    )
+    if session_id == "123":
+        aliases.return_value.append(
+            SimpleNamespace(
+                umo="onebot:GroupMessage:99_123",
+                creator_sender_id="99",
+                user_alias="成员隔离会话别名",
+                auto_name="测试群名称",
+            )
+        )
+    dashboard.runtime.adapter.context.get_db = lambda: SimpleNamespace(
+        get_umo_aliases=aliases
+    )
+    _, result = await invoke(dashboard.overview)
+    assert result["sessions"][0]["title"] == (user_alias or "测试群名称")
+    aliases.assert_awaited_once()
+    aliases.return_value[0].auto_name = "更新后的群名"
+    _, result = await invoke(dashboard.overview)
+    assert result["sessions"][0]["title"] == (user_alias or "更新后的群名")
 
 
 @pytest.mark.parametrize(
