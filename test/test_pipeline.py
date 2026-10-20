@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from humanization_test.core.astrbot_adapter import IdleEvent
@@ -326,6 +326,8 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
     context = SimpleNamespace(
         persona_manager=SimpleNamespace(get_persona=AsyncMock()),
         get_db=lambda: database,
+        register_web_api=Mock(),
+        registered_web_apis=[],
     )
     monkeypatch.setattr(StarTools, "get_data_dir", lambda: tmp_path)
     instance = Humanization(context, config)

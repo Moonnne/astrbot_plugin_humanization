@@ -48,6 +48,12 @@ async def native(plugin, monkeypatch):
         return SimpleNamespace(
             handler_module_path="humanization.native.test",
             handler_name=name,
+            handler_full_name=f"humanization.native.test.{name}",
+            event_type=EventType.OnAfterMessageSentEvent
+            if name in {"record", "observer"}
+            else EventType.OnDecoratingResultEvent,
+            extras_configs={},
+            event_filters=[],
             handler=handler,
         )
 
@@ -60,7 +66,9 @@ async def native(plugin, monkeypatch):
         ],
     }
     monkeypatch.setitem(
-        star_map, "humanization.native.test", SimpleNamespace(name="Humanization")
+        star_map,
+        "humanization.native.test",
+        SimpleNamespace(name="Humanization", display_name="Humanization"),
     )
     monkeypatch.setattr(
         star_handlers_registry,

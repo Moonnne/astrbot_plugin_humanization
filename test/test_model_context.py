@@ -78,7 +78,9 @@ async def test_native_writer_preserves_commands_excluded_from_inference(
         EventType.OnAgentDoneEvent: done,
     }
     monkeypatch.setitem(
-        star_map, "humanization.context.test", SimpleNamespace(name="Humanization")
+        star_map,
+        "humanization.context.test",
+        SimpleNamespace(name="Humanization", display_name="Humanization"),
     )
     monkeypatch.setattr(
         star_handlers_registry,
@@ -88,6 +90,9 @@ async def test_native_writer_preserves_commands_excluded_from_inference(
                 SimpleNamespace(
                     handler_module_path="humanization.context.test",
                     handler_name=kind.name,
+                    handler_full_name=f"humanization.context.test.{kind.name}",
+                    event_type=kind,
+                    extras_configs={},
                     handler=callbacks[kind],
                 )
             ]

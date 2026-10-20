@@ -66,6 +66,7 @@ async def test_native_empty_mention_does_not_steal_controlled_input(
             handler_module_path=module,
             handler_name=name,
             handler_full_name=f"{module}.{name}",
+            event_type=EventType.AdapterMessageEvent,
             handler=handler,
             event_filters=[],
             extras_configs={"priority": priority},
@@ -112,7 +113,9 @@ async def test_native_empty_mention_does_not_steal_controlled_input(
     handlers.sort(key=lambda h: -h.extras_configs["priority"])
     for handler in handlers:
         monkeypatch.setitem(
-            star_map, handler.handler_module_path, SimpleNamespace(name="test")
+            star_map,
+            handler.handler_module_path,
+            SimpleNamespace(name="test", display_name="Test"),
         )
 
     event = Event("", direct=True)

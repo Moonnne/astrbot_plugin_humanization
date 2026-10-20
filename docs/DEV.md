@@ -13,6 +13,7 @@ core/
   runtime.py               记录、调度、规划、回复与重置的编排
   settings.py              配置校验、时段与提及策略
   management.py            管理员命令与重置确认
+  dashboard.py             视图接口、数据浏览与设置保存
   recorder/                业务存取、日记协议与后台总结
   controller/              频率调度、规划协议、提示词与发送记录
 models/                    消息、决策、时段、调度状态等数据模型
@@ -21,6 +22,13 @@ resource/
   prompts/                 固定模型协议
   sql/                     按用途分类的命名 SQL
 test/                      隔离测试、替身及测试辅助代码
+views/                     前端构建配置、锁文件
+  humanization/            官方视图入口、打包资源及 Vue 源码
+    overview/              统计卡片
+    data/                  数据列表、筛选与删除
+    settings/              配置表单
+    shared/                结构化数据展示
+.astrbot-plugin/i18n/       官方视图名称与描述
 docs/DEV.md                随仓库维护的开发说明
 ```
 
@@ -235,6 +243,28 @@ Controller／主模型观察和 Recorder 摘要通过同一身份查询筛选已
 
 普通日志不记录聊天正文、日记、完整提示词或凭据；调试日志记录详细资料但脱敏已知凭据并省略二进制，分享前仍须检查。运行数据库、日志与密钥不提交 Git。
 
+## 嵌入式管理视图
+
+遵循宿主 `docs/zh/dev/star/guides/plugin-pages.md`：入口固定为 `views/humanization/index.html`，由 AstrBot 自动发现并放入侧边栏及插件详情页。页面通过宿主注入的 `window.AstrBotPluginView` 通信，API 注册在 `/astrbot_plugin_humanization/` 命名空间，后端使用 `astrbot.api.web`。不自行启动 Web 服务、不访问父窗口 DOM、不获取或保存宿主登录令牌。
+
+前端使用与宿主相同版本的 Vue、Vuetify 和 MDI SVG 图标，布局使用组件与现成工具类；明暗主题通过 bridge context 同步。隔离 iframe 无法直接共享父窗口 Vue 实例，因此依赖打包到本地静态资源，无 CDN。`views/node_modules/` 不提交；`index.html`、`app.js`、`style.css`、源码、构建配置、锁文件及 i18n 元数据随插件发布。
+
+后端复用现有 Database 的只读连接与写事务，不另开连接池。SQL 位于 `resource/sql/dashboard.sql`；分类和排序字段采用白名单，条件参数绑定。每页上限 100 条，删除只能指定 1—100 个已选记录 ID，无任意 SQL 或文件访问接口。日记按日期级联删除话题；普通删除保留累计进度与序号，完整重置仍使用原管理流程。
+
+删除与会话重置串行，排除正在进行的规划和日记整理，并持有相应记录锁；成功后取消该会话待处理调度快照。设置保存执行原生 schema 校验与插件语义校验，核对配置版本摘要，使用原生配置保存与插件重载。危险操作沿用已有确认文字；重载前确认目标插件存在，避免宿主将不存在的名字解释为重载所有插件。卸载只注销本实例注册的路由。
+
+开发构建（从插件根目录）：
+
+```text
+npm --prefix views ci
+npm --prefix views run build
+node test/dashboard_ui.mjs
+```
+
+浏览器检查使用真实宿主 bridge、同样的 iframe sandbox 和模拟接口数据，不操作真实聊天库；Windows 默认使用本机 Edge／Chrome，可用 `HUMANIZATION_BROWSER` 指定浏览器可执行文件。截图写入系统临时目录。修改 Vue 源码后必须重新构建，`emptyOutDir=false` 避免清理与产物同目录的源码。
+
+本轮对比宿主 `db4ce0c4b`（4.29.0）至 `e5e21b71a`（4.29.1）：视图发现、bridge 与 Web API 协议未变；新增事件追踪要求测试替身提供完整 Handler 元数据。新版宿主新增 OpenTelemetry 依赖，更新源码后须同步宿主依赖；这不是插件新增的 Python 安装项。
+
 ## 验证与交付
 
 在具备目标 AstrBot 依赖的环境中，从插件根目录运行：
@@ -257,6 +287,7 @@ git diff --check
 - 规划 JSON、焦点校验、情绪历史、必回复失败回退与决策持久化。
 - 数据库并发、读快照、取消回滚、关闭排空、外部读事务阻挡及初始化失败清理。
 - 日志容量滚动、脱敏、用量与缓存数据、取消／失败记录。
+- 面板登录校验、分类查询、分页筛选、结构化字段、批量删除及级联、忙碌冲突、设置校验与重载；隔离 iframe 中的交互、主题和窄屏布局。
 
 模型、TTS、渲染和平台发送使用替身；关键装饰与发送阶段使用宿主实现。隔离测试通过不等于真实提供商与 OneBot 平台联调通过。更换 AstrBot 版本后重新运行接入契约测试。
 

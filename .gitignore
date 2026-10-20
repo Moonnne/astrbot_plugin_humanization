@@ -209,3 +209,6 @@ __marimo__/
 # Keep local reference files private while publishing the development guide.
 docs/*
 !docs/DEV.md
+
+# Plugin view development dependencies; built view assets are published.
+views/node_modules/

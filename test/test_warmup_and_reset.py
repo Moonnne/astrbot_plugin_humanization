@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from diary_helpers import topic_change
@@ -439,6 +439,8 @@ async def test_panel_wipe_disarms_before_execution_and_never_repeats(
     context = SimpleNamespace(
         persona_manager=SimpleNamespace(get_persona=AsyncMock()),
         get_db=lambda: SimpleNamespace(get_umo_aliases=AsyncMock(return_value=[])),
+        register_web_api=Mock(),
+        registered_web_apis=[],
     )
     instance = Humanization(context, config)
     calls = []

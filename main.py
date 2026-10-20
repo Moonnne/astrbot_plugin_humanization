@@ -8,6 +8,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools
 
 from .core.astrbot_adapter import InternalEventFilter, ScopeFilter
+from .core.dashboard import Dashboard
 from .core.management import ManagementAccessFilter, ManagementMessageFilter
 from .core.runtime import Runtime
 
@@ -44,6 +45,8 @@ class Humanization(Star):
                         "admin.reset_all.rejected", reason="confirmation_mismatch"
                     )
             await self.refresh_sessions()
+            self.dashboard = Dashboard(self)
+            self.dashboard.register()
         except Exception:
             await self.runtime.terminate()
             raise
@@ -206,4 +209,6 @@ class Humanization(Star):
             )
 
     async def terminate(self):
+        if hasattr(self, "dashboard"):
+            self.dashboard.close()
         await self.runtime.terminate()
