@@ -8,12 +8,18 @@ export default defineConfig({
   build: {
     outDir: fileURLToPath(new URL('./humanization', import.meta.url)),
     emptyOutDir: false,
-    lib: {
-      entry: fileURLToPath(new URL('./humanization/main.js', import.meta.url)),
-      formats: ['iife'],
-      name: 'HumanizationView',
-      fileName: () => 'app.js',
+    minify: false,
+    cssMinify: false,
+    cssCodeSplit: false,
+    rollupOptions: {
+      input: fileURLToPath(new URL('./humanization/main.js', import.meta.url)),
+      output: {
+        format: 'es',
+        entryFileNames: 'app.js',
+        chunkFileNames: 'assets/[name].js',
+        assetFileNames: 'style.css',
+        manualChunks(id) { if (id.includes('node_modules')) return 'vendor'; },
+      },
     },
-    rollupOptions: { output: { assetFileNames: 'style.css' } },
   },
 });

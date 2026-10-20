@@ -297,7 +297,8 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
     config = AstrBotConfig(str(tmp_path / "config.json"), schema=schema)
     assert config["controller"]["mode"] == "scheduled"
     assert config["controller"]["force_at"] is True
-    assert next(reversed(schema)) == "danger"
+    assert next(reversed(schema)) == "logging"
+    assert "danger" not in schema
     assert list(schema["recorder"]["items"])[:2] == ["enabled", "summary_provider"]
     assert config["recorder"]["filter_commands"] is True
     assert "filter_llm_commands" not in schema["recorder"]["items"]

@@ -2,6 +2,7 @@
 
 import copy
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -100,7 +101,7 @@ async def test_browse_parses_json_and_scopes_data(dashboard, category):
     }[category]
     assert isinstance(row[field], (list, dict))
     _, other = await invoke(
-        dashboard.records, query={"category": category, "scope": "absent"}
+        dashboard.records, query={"category": category, "sessions": '["absent"]'}
     )
     assert other == {"items": [], "total": 0}
 
@@ -121,6 +122,98 @@ async def test_search_sort_pagination_and_stats(dashboard):
     assert result["stats"]["topics"] == result["stats"]["diaries"] == 1
 
 
+@pytest.mark.parametrize("category", ["messages", "decisions", "topics", "diaries"])
+async def test_multiple_sessions_and_chat_type(dashboard, category):
+    _, result = await invoke(
+        dashboard.records,
+        query={
+            "category": category,
+            "chat_type": "group",
+            "sessions": json.dumps(
+                ["onebot:GroupMessage:123", "onebot:FriendMessage:absent"]
+            ),
+        },
+    )
+    assert result["total"] > 0
+    _, result = await invoke(
+        dashboard.records, query={"category": category, "chat_type": "private"}
+    )
+    assert result["total"] == 0
+
+
+async def test_group_and_private_can_be_selected_together(dashboard):
+    message = dashboard.runtime.adapter.snapshot(
+        Event("私聊记录", message_id="private")
+    )
+    await dashboard.runtime.storage.append(
+        replace(
+            message,
+            scope=json.dumps(["onebot", "999", "private", "456"]),
+            umo="onebot:FriendMessage:456",
+            private=True,
+            group_id="",
+        )
+    )
+    selected = json.dumps(["onebot:GroupMessage:123", "onebot:FriendMessage:456"])
+    _, result = await invoke(dashboard.records, query={"sessions": selected})
+    assert result["total"] == 4
+    _, result = await invoke(
+        dashboard.records, query={"sessions": selected, "chat_type": "private"}
+    )
+    assert result["total"] == 1 and result["items"][0]["text"] == "私聊记录"
+
+
+@pytest.mark.parametrize(
+    "category,matching,excluded",
+    [
+        (
+            "messages",
+            {"kind": "in", "sender": "User", "component": "text"},
+            {"kind": "out"},
+        ),
+        ("messages", {"sender": "42"}, {"component": "image"}),
+        (
+            "decisions",
+            {"reply": "1", "emotion": "NEUTRAL", "required": "0", "trigger": "message"},
+            {"reply": "0"},
+        ),
+        ("decisions", {"kind": "pending"}, {"emotion": "ANGER"}),
+        (
+            "topics",
+            {"participant": "讨论天气", "bot_reply": "未见我参与"},
+            {"participant": "absent"},
+        ),
+        ("diaries", {"kind": "0", "coverage_gap": "0"}, {"coverage_gap": "1"}),
+    ],
+)
+async def test_category_specific_filters(dashboard, category, matching, excluded):
+    _, result = await invoke(
+        dashboard.records, query={"category": category, **matching}
+    )
+    assert result["total"] > 0
+    _, result = await invoke(
+        dashboard.records, query={"category": category, **excluded}
+    )
+    assert result["total"] == 0
+
+
+async def test_session_choices_use_enabled_range_and_stats_accept_umo(dashboard):
+    dashboard.runtime.settings.scope["manual_sessions"] = ["onebot:FriendMessage:456"]
+    _, result = await invoke(
+        dashboard.overview, query={"scope": "onebot:GroupMessage:123"}
+    )
+    assert result["stats"]["messages"] == 3
+    assert {item["value"] for item in result["sessions"]} == {
+        "onebot:GroupMessage:123",
+        "onebot:FriendMessage:456",
+    }
+    dashboard.runtime.settings.scope["sessions"] = []
+    _, result = await invoke(dashboard.overview)
+    assert [item["value"] for item in result["sessions"]] == [
+        "onebot:FriendMessage:456"
+    ]
+
+
 @pytest.mark.parametrize(
     "query",
     [
@@ -130,6 +223,9 @@ async def test_search_sort_pagination_and_stats(dashboard):
         {"page": 0},
         {"start": "invalid"},
         {"start": "2026-10-20", "end": "2026-10-01"},
+        {"sessions": '"not-a-list"'},
+        {"sessions": "[{}]"},
+        {"sessions": "invalid-json"},
     ],
 )
 async def test_rejects_invalid_queries(dashboard, query):
@@ -171,7 +267,8 @@ async def test_busy_scope_is_not_modified(dashboard):
 
 
 @pytest.mark.parametrize(
-    "endpoint", ["overview", "records", "delete", "settings", "save_settings"]
+    "endpoint",
+    ["overview", "records", "delete", "settings", "save_settings", "reset_all"],
 )
 async def test_endpoints_require_dashboard_identity(dashboard, endpoint):
     assert (await invoke(getattr(dashboard, endpoint), username=None))[0] == 403
@@ -209,8 +306,54 @@ async def test_config_validation_revision_and_native_reload(dashboard):
 async def test_registration_cleanup_preserves_other_plugins(dashboard):
     dashboard.register()
     apis = dashboard.plugin.context.registered_web_apis
-    assert len(apis) == 5
+    assert len(apis) == 6
     other = ("/other/ping", object(), ["GET"], "ping")
     apis.append(other)
     dashboard.close()
     assert apis == [other]
+
+
+@pytest.mark.parametrize("confirmation", [None, "", "incorrect"])
+async def test_reset_all_requires_exact_confirmation(dashboard, confirmation):
+    dashboard.runtime.reset_all = AsyncMock()
+    status, _ = await invoke(dashboard.reset_all, body={"confirmation": confirmation})
+    assert status == 400
+    dashboard.runtime.reset_all.assert_not_awaited()
+
+
+async def test_reset_all_runs_without_config_save_or_plugin_reload(dashboard):
+    dashboard.runtime.context.conversation_manager = SimpleNamespace(
+        get_conversations=AsyncMock(return_value=[]),
+        get_curr_conversation_id=AsyncMock(return_value="old"),
+        get_conversation=AsyncMock(return_value=SimpleNamespace(persona_id="persona")),
+        new_conversation=AsyncMock(return_value="new"),
+    )
+    before = dashboard.plugin.config.config_path
+    saved = Path(before).read_bytes()
+    status, result = await invoke(
+        dashboard.reset_all,
+        body={
+            "confirmation": dashboard.runtime.admin.all_confirmation,
+        },
+    )
+    assert status == 200 and result == {"reset": True, "conversations": 1}
+    for category in ("messages", "decisions", "topics", "diaries"):
+        _, result = await invoke(dashboard.records, query={"category": category})
+        assert result["total"] == 0
+    dashboard.runtime.context.conversation_manager.new_conversation.assert_awaited_once_with(
+        "onebot:GroupMessage:123", platform_id="onebot", persona_id="persona"
+    )
+    assert Path(before).read_bytes() == saved
+    dashboard.plugin.context._star_manager.reload.assert_not_awaited()
+
+
+async def test_reset_all_reports_partial_failure(dashboard):
+    dashboard.runtime.reset_all = AsyncMock(side_effect=OSError("internal path"))
+    status, result = await invoke(
+        dashboard.reset_all,
+        body={
+            "confirmation": dashboard.runtime.admin.all_confirmation,
+        },
+    )
+    assert status == 500 and "部分会话可能已重置" in result["message"]
+    assert "internal path" not in result["message"]

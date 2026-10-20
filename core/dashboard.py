@@ -35,6 +35,7 @@ class Dashboard:
             ("records/delete", self.delete, "POST"),
             ("settings", self.settings, "GET"),
             ("settings/save", self.save_settings, "POST"),
+            ("data/reset-all", self.reset_all, "POST"),
         ):
             route = f"/{self.plugin_name}/{endpoint}"
             self.plugin.context.register_web_api(route, handler, [method], endpoint)
@@ -67,14 +68,34 @@ class Dashboard:
             return denied
         scope = request.query.get("scope", "")
         async with self.database.snapshot() as tx:
-            stats = (await tx.rows(self.sql["dashboard.stats"], {"scope": scope}))[0]
             scopes = await tx.rows(self.sql["dashboard.sessions"])
+            stats = (
+                await tx.rows(
+                    self.sql["dashboard.stats"],
+                    {
+                        "scope": scope,
+                        "scopes": json.dumps(
+                            [
+                                row["scope"]
+                                for row in scopes
+                                if self.conversation(row["scope"]) == scope
+                            ]
+                        ),
+                    },
+                )
+            )[0]
+        configured = self.runtime.settings.scope
+        item = self.plugin.config.schema["scope"]["items"]["sessions"]
+        labels = dict(zip(item.get("options", []), item.get("labels", [])))
+        sessions = {self.conversation(row["scope"]) for row in scopes}
+        sessions.update(configured["sessions"] + configured["manual_sessions"])
+        sessions = {umo for umo in sessions if self.runtime.settings.selected(umo, umo)}
         return json_response(
             {
                 "stats": stats,
                 "sessions": [
-                    {"value": row["scope"], "title": self.conversation(row["scope"])}
-                    for row in scopes
+                    {"value": umo, "title": labels.get(umo, umo), "umo": umo}
+                    for umo in sorted(sessions)
                 ],
                 "timezone": str(self.runtime.settings.timezone),
             }
@@ -98,18 +119,24 @@ class Dashboard:
             return error_response("页码或每页条数无效（最多100条）")
         start, end = request.query.get("start", ""), request.query.get("end", "")
         try:
+            sessions = json.loads(request.query.get("sessions", "[]"))
+            if not isinstance(sessions, list) or any(
+                not isinstance(umo, str) for umo in sessions
+            ):
+                raise ValueError
             for value in (start, end):
                 if value:
                     date.fromisoformat(value)
             if start and end and start > end:
                 raise ValueError
         except ValueError:
-            return error_response("日期范围无效")
+            return error_response("会话列表或日期范围无效")
         offset = (
             datetime.now(self.runtime.settings.timezone).utcoffset().total_seconds()
         )
         args = {
-            "scope": request.query.get("scope", ""),
+            "sessions": json.dumps(sessions),
+            "chat_type": request.query.get("chat_type", ""),
             "q": request.query.get("q", ""),
             "kind": request.query.get("kind", ""),
             "start": start,
@@ -118,15 +145,31 @@ class Dashboard:
             "limit": limit,
             "skip": (page - 1) * limit,
         }
+        for field in (
+            "sender",
+            "component",
+            "reply",
+            "emotion",
+            "required",
+            "trigger",
+            "participant",
+            "bot_reply",
+            "coverage_gap",
+        ):
+            args[field] = request.query.get(field, "")
         source = self.sql[f"dashboard.{category}"]
+        filters = self.sql[f"dashboard.filter_{category}"]
         # Only fixed resource names and whitelisted sort identifiers enter SQL.
         async with self.database.snapshot() as tx:
             total = (
-                await tx.rows(self.sql["dashboard.count"].format(source=source), args)
+                await tx.rows(
+                    self.sql["dashboard.count"].format(source=source, filters=filters),
+                    args,
+                )
             )[0]["total"]
             rows = await tx.rows(
                 self.sql["dashboard.page"].format(
-                    source=source, order=f"{sort} {order}"
+                    source=source, filters=filters, order=f"{sort} {order}"
                 ),
                 args,
             )
@@ -227,8 +270,9 @@ class Dashboard:
         return json_response(
             {
                 "schema": schema,
-                "config": dict(self.plugin.config),
+                "config": {key: self.plugin.config[key] for key in schema},
                 "revision": self.revision(self.plugin.config),
+                "reset_confirmation": self.runtime.admin.all_confirmation,
                 "choices": {
                     "select_provider": providers,
                     "select_persona": personas,
@@ -266,12 +310,6 @@ class Dashboard:
                 if errors:
                     raise ValueError("；".join(errors))
                 Settings(config)
-                if (
-                    config["danger"]["clear_all_data"]
-                    and config["danger"]["confirmation"]
-                    != self.runtime.admin.all_confirmation
-                ):
-                    raise ValueError("清除所有数据前必须填写正确的确认文字")
             except (ValueError, TypeError, KeyError) as exc:
                 return error_response(str(exc))
             manager = self.plugin.context._star_manager
@@ -287,3 +325,27 @@ class Dashboard:
                     f"配置已保存，但重载失败：{message}", status_code=500
                 )
         return json_response({"saved": True, "reloaded": True})
+
+    async def reset_all(self):
+        """Confirm and immediately reset plugin data through the existing lifecycle.
+
+        Returns:
+            Reset conversation count, or an error if confirmation or reset fails.
+        """
+        async with self.config_lock:
+            if denied := self.authorize():
+                return denied
+            payload = await request.json(default={})
+            if (
+                not isinstance(payload, dict)
+                or payload.get("confirmation") != self.runtime.admin.all_confirmation
+            ):
+                return error_response("确认信息不匹配，未执行清除")
+            try:
+                count = await self.runtime.reset_all()
+            except Exception as exc:
+                return error_response(
+                    f"清除失败（{type(exc).__name__}）。部分会话可能已重置，请检查插件日志。",
+                    status_code=500,
+                )
+        return json_response({"reset": True, "conversations": count})

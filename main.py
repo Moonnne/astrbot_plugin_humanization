@@ -31,19 +31,6 @@ class Humanization(Star):
     async def initialize(self):
         await self.runtime.initialize()
         try:
-            danger = self.config["danger"]
-            if danger["clear_all_data"]:
-                confirmation = danger["confirmation"]
-                # Persist disarming before deletion so reload cannot repeat the action.
-                danger["clear_all_data"] = False
-                danger["confirmation"] = ""
-                self.config.save_config()
-                if confirmation == self.runtime.admin.all_confirmation:
-                    await self.runtime.reset_all()
-                else:
-                    self.runtime.log.info(
-                        "admin.reset_all.rejected", reason="confirmation_mismatch"
-                    )
             await self.refresh_sessions()
             self.dashboard = Dashboard(self)
             self.dashboard.register()

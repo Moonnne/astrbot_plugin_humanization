@@ -1,7 +1,27 @@
 import { createApp } from 'vue';
 import { createVuetify } from 'vuetify';
-import * as components from 'vuetify/components';
-import * as directives from 'vuetify/directives';
+import { VApp } from 'vuetify/components/VApp';
+import { VAlert } from 'vuetify/components/VAlert';
+import { VAutocomplete } from 'vuetify/components/VAutocomplete';
+import { VBtn } from 'vuetify/components/VBtn';
+import { VCard, VCardActions, VCardText, VCardTitle } from 'vuetify/components/VCard';
+import { VChip } from 'vuetify/components/VChip';
+import { VCombobox } from 'vuetify/components/VCombobox';
+import { VDataTableServer } from 'vuetify/components/VDataTable';
+import { VDialog } from 'vuetify/components/VDialog';
+import { VDivider } from 'vuetify/components/VDivider';
+import { VIcon } from 'vuetify/components/VIcon';
+import { VMain } from 'vuetify/components/VMain';
+import { VProgressLinear } from 'vuetify/components/VProgressLinear';
+import { VContainer, VRow, VCol, VSpacer } from 'vuetify/components/VGrid';
+import { VSelect } from 'vuetify/components/VSelect';
+import { VSlider } from 'vuetify/components/VSlider';
+import { VSnackbar } from 'vuetify/components/VSnackbar';
+import { VSwitch } from 'vuetify/components/VSwitch';
+import { VTable } from 'vuetify/components/VTable';
+import { VTextField } from 'vuetify/components/VTextField';
+import { VTextarea } from 'vuetify/components/VTextarea';
+import { VExpandXTransition } from 'vuetify/components/transitions';
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg';
 import { zhHans } from 'vuetify/locale';
 import 'vuetify/styles';
@@ -9,7 +29,12 @@ import App from './App.vue';
 
 // Match AstrBot's PurpleTheme palette; all layout uses Vuetify utilities.
 const vuetify = createVuetify({
-  components, directives,
+  components: {
+    VApp, VAlert, VAutocomplete, VBtn, VCard, VCardActions, VCardText, VCardTitle,
+    VChip, VCombobox, VDataTableServer, VDialog, VDivider, VIcon, VMain,
+    VProgressLinear, VContainer, VRow, VCol, VSpacer, VSelect, VSlider,
+    VSnackbar, VSwitch, VTable, VTextField, VTextarea, VExpandXTransition,
+  },
   icons: { defaultSet: 'mdi', aliases, sets: { mdi } },
   locale: { locale: 'zhHans', messages: { zhHans } },
   theme: {

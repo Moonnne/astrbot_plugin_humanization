@@ -4,14 +4,14 @@ UNION SELECT scope FROM controller_decisions ORDER BY scope;
 
 -- name: stats
 SELECT
- (SELECT COUNT(*) FROM sessions WHERE :scope='' OR scope=:scope) AS sessions,
- (SELECT COUNT(*) FROM messages WHERE :scope='' OR scope=:scope) AS messages,
- (SELECT COUNT(*) FROM diary_topics WHERE :scope='' OR scope=:scope) AS topics,
- (SELECT COUNT(*) FROM diary_days WHERE :scope='' OR scope=:scope) AS diaries,
- (SELECT COUNT(*) FROM controller_decisions WHERE :scope='' OR scope=:scope) AS decisions,
- (SELECT COUNT(*) FROM controller_decisions WHERE (:scope='' OR scope=:scope)
+ (SELECT COUNT(*) FROM sessions WHERE :scope='' OR scope IN (SELECT value FROM json_each(:scopes))) AS sessions,
+ (SELECT COUNT(*) FROM messages WHERE :scope='' OR scope IN (SELECT value FROM json_each(:scopes))) AS messages,
+ (SELECT COUNT(*) FROM diary_topics WHERE :scope='' OR scope IN (SELECT value FROM json_each(:scopes))) AS topics,
+ (SELECT COUNT(*) FROM diary_days WHERE :scope='' OR scope IN (SELECT value FROM json_each(:scopes))) AS diaries,
+ (SELECT COUNT(*) FROM controller_decisions WHERE :scope='' OR scope IN (SELECT value FROM json_each(:scopes))) AS decisions,
+ (SELECT COUNT(*) FROM controller_decisions WHERE (:scope='' OR scope IN (SELECT value FROM json_each(:scopes)))
    AND json_extract(decision_json,'$.reply')=1) AS planned_replies,
- (SELECT COUNT(*) FROM controller_decisions WHERE (:scope='' OR scope=:scope)
+ (SELECT COUNT(*) FROM controller_decisions WHERE (:scope='' OR scope IN (SELECT value FROM json_each(:scopes)))
    AND outcome='processed') AS processed;
 
 -- name: messages
@@ -40,16 +40,47 @@ FROM diary_days d
 
 -- name: count
 SELECT COUNT(*) AS total FROM ({source})
-WHERE (:scope='' OR scope=:scope) AND (:kind='' OR kind=:kind)
+WHERE (:sessions='[]' OR (
+ json_extract(scope,'$[0]') || ':' || CASE json_extract(scope,'$[2]')
+ WHEN 'private' THEN 'FriendMessage' ELSE 'GroupMessage' END || ':' || json_extract(scope,'$[3]')
+ IN (SELECT value FROM json_each(:sessions))))
+ AND (:chat_type='' OR json_extract(scope,'$[2]')=:chat_type)
  AND (:start='' OR day>=:start) AND (:end='' OR day<=:end)
  AND (:q='' OR instr(lower(search),lower(:q))>0)
+ AND ({filters})
 
 -- name: page
 SELECT * FROM ({source})
-WHERE (:scope='' OR scope=:scope) AND (:kind='' OR kind=:kind)
+WHERE (:sessions='[]' OR (
+ json_extract(scope,'$[0]') || ':' || CASE json_extract(scope,'$[2]')
+ WHEN 'private' THEN 'FriendMessage' ELSE 'GroupMessage' END || ':' || json_extract(scope,'$[3]')
+ IN (SELECT value FROM json_each(:sessions))))
+ AND (:chat_type='' OR json_extract(scope,'$[2]')=:chat_type)
  AND (:start='' OR day>=:start) AND (:end='' OR day<=:end)
  AND (:q='' OR instr(lower(search),lower(:q))>0)
+ AND ({filters})
 ORDER BY {order}, scope, id LIMIT :limit OFFSET :skip
+
+-- name: filter_messages
+(:kind='' OR direction=:kind)
+ AND (:sender='' OR instr(lower(sender_name || ' ' || sender_id),lower(:sender))>0)
+ AND (:component='' OR EXISTS (SELECT 1 FROM json_each(segments)
+   WHERE json_extract(value,'$.type')=:component))
+
+-- name: filter_decisions
+(:kind='' OR outcome=:kind)
+ AND (:reply='' OR CAST(json_extract(decision_json,'$.reply') AS TEXT)=:reply)
+ AND (:emotion='' OR json_extract(decision_json,'$.emotion.primary')=:emotion)
+ AND (:required='' OR CAST(reply_required AS TEXT)=:required)
+ AND (:trigger='' OR trigger=:trigger)
+
+-- name: filter_topics
+(:participant='' OR instr(lower(interact),lower(:participant))>0)
+ AND (:bot_reply='' OR instr(lower(reply),lower(:bot_reply))>0)
+
+-- name: filter_diaries
+(:kind='' OR CAST(sealed AS TEXT)=:kind)
+ AND (:coverage_gap='' OR CAST(coverage_gap AS TEXT)=:coverage_gap)
 
 -- name: diary_topics
 SELECT * FROM diary_topics WHERE scope=? AND day=? ORDER BY topic_at,id;

@@ -481,26 +481,5 @@
         "hint": "调试日志的存储容量，单位与 runtime.log 相同。0 表示无限制，支持小数，不允许负数。保存重载后生效，包括裁剪已有日志；增大上限不会恢复已丢弃的记录。"
       }
     }
-  },
-  "danger": {
-    "type": "object",
-    "description": "危险操作区",
-    "items": {
-      "clear_all_data": {
-        "type": "bool",
-        "description": "清除所有会话数据",
-        "default": false,
-        "hint": "危险操作：清空全部 Humanization 会话的聊天数据库记录、日记、回复记录和进度／计数／调度状态，并为对应主模型会话新建空白对话。包括当前未启用的历史插件会话；原生旧对话保留，日志不清空。开启并输入确认文字后保存／重载，执行一次；执行前自动关闭本开关。"
-      },
-      "confirmation": {
-        "type": "string",
-        "description": "全量清除确认文字",
-        "default": "",
-        "condition": {
-          "clear_all_data": true
-        },
-        "hint": "确实要清除时完整输入 CLEAR_ALL_HUMANIZATION_DATA，再保存。文字不匹配时取消操作；请求消费后此文本和开关都会自动清空，不因后续加载重复执行。"
-      }
-    }
   }
 }

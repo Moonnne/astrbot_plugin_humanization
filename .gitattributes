@@ -1,0 +1,4 @@
+# Keep release assets; review their Vue sources instead of third-party library diffs.
+views/humanization/app.js linguist-generated=true -diff
+views/humanization/style.css linguist-generated=true -diff
+views/humanization/assets/*.js linguist-generated=true -diff

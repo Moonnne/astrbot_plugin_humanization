@@ -419,22 +419,14 @@ async def test_failed_reset_all_releases_pause_and_reports_failure(managed):
     assert "admin.reset_all.failed" in events
 
 
-@pytest.mark.parametrize("valid", [False, True])
-async def test_panel_wipe_disarms_before_execution_and_never_repeats(
-    tmp_path, monkeypatch, valid
-):
-    path = tmp_path / "config.json"
+async def test_plugin_load_never_triggers_data_reset(tmp_path, monkeypatch):
     schema = json.loads(
         (Path(__file__).resolve().parents[1] / "_conf_schema.json").read_text(
             encoding="utf-8"
         )
     )
-    config = AstrBotConfig(str(path), schema=schema)
-    config["danger"].update(
-        clear_all_data=True,
-        confirmation="CLEAR_ALL_HUMANIZATION_DATA" if valid else "incorrect",
-    )
-    config.save_config()
+    assert "danger" not in schema
+    config = AstrBotConfig(str(tmp_path / "config.json"), schema=schema)
     monkeypatch.setattr(StarTools, "get_data_dir", lambda: tmp_path)
     context = SimpleNamespace(
         persona_manager=SimpleNamespace(get_persona=AsyncMock()),
@@ -443,51 +435,9 @@ async def test_panel_wipe_disarms_before_execution_and_never_repeats(
         registered_web_apis=[],
     )
     instance = Humanization(context, config)
-    calls = []
-
-    async def reset():
-        saved = json.loads(path.read_text(encoding="utf-8-sig"))
-        assert saved["danger"] == {"clear_all_data": False, "confirmation": ""}
-        calls.append(True)
-
-    instance.runtime.reset_all = reset
-    await instance.initialize()
-    await instance.terminate()
-    saved = json.loads(path.read_text(encoding="utf-8-sig"))
-    assert saved["danger"] == {"clear_all_data": False, "confirmation": ""}
-    assert calls == ([True] if valid else [])
-    loaded = AstrBotConfig(str(path), schema=schema)
-    reloaded = Humanization(context, loaded)
-    reloaded.runtime.reset_all = AsyncMock()
-    await reloaded.initialize()
-    try:
-        reloaded.runtime.reset_all.assert_not_awaited()
-    finally:
-        await reloaded.terminate()
-
-
-async def test_panel_save_failure_does_not_start_destructive_operation(
-    tmp_path, monkeypatch
-):
-    schema = json.loads(
-        (Path(__file__).resolve().parents[1] / "_conf_schema.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    config = AstrBotConfig(str(tmp_path / "config.json"), schema=schema)
-    config["danger"].update(
-        clear_all_data=True, confirmation="CLEAR_ALL_HUMANIZATION_DATA"
-    )
-    monkeypatch.setattr(StarTools, "get_data_dir", lambda: tmp_path)
-    context = SimpleNamespace(persona_manager=SimpleNamespace(get_persona=AsyncMock()))
-    instance = Humanization(context, config)
     instance.runtime.reset_all = AsyncMock()
-
-    def denied_save(self):
-        raise PermissionError()
-
-    monkeypatch.setattr(AstrBotConfig, "save_config", denied_save)
-    with pytest.raises(PermissionError):
-        await instance.initialize()
-    instance.runtime.reset_all.assert_not_awaited()
-    assert instance.runtime.closed
+    await instance.initialize()
+    try:
+        instance.runtime.reset_all.assert_not_awaited()
+    finally:
+        await instance.terminate()
