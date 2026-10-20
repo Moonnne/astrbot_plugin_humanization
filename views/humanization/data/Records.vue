@@ -3,6 +3,8 @@ import { ref, reactive, computed, watch, inject, onBeforeUnmount } from 'vue';
 import { mdiFilterVariant, mdiDeleteOutline, mdiEyeOutline } from '@mdi/js';
 import JsonValue from '../shared/JsonValue.vue';
 import FilterPanel from './FilterPanel.vue';
+import ResizableHeaders from './ResizableHeaders.vue';
+import { sessionLabel } from '../shared/session.js';
 import { outcomes, emotions } from './options.js';
 const props = defineProps({ category:String, sessions:Array, refresh:Number, timezone:String });
 const emit = defineEmits(['changed']);
@@ -11,6 +13,9 @@ const defaults = {q:'', sessions:[], chat_type:'', start:'', end:'', kind:'', se
 const filters = reactive({...defaults, sessions:[]});
 const filtersOpen = ref(true);
 const sessionTitles = computed(() => Object.fromEntries(props.sessions.map(item => [item.umo,item.title])));
+const defaultWidths = {timestamp:180,conversation:360,headline:320,state:180,actions:112};
+const widths = reactive({...defaultWidths});
+const tableWidth = computed(() => Object.values(widths).reduce((sum,width) => sum+width,48));
 const page = ref(1), limit = ref(25);
 const sort = computed({
   get() { const [key,order] = filters.sort.split(':'); return [{key,order}]; },
@@ -21,10 +26,10 @@ const detail = ref(null), confirm = ref(false), deleting = ref(false), success =
 let generation = 0, timer;
 const titles = { messages:'聊天记录', decisions:'最近反应', topics:'话题', diaries:'日记' };
 const headers = computed(() => [
-  { title:'时间', key:'timestamp', width:180 }, { title:'会话', key:'conversation', sortable:false, width:220 },
-  { title:props.category === 'decisions' ? '规划原因' : '内容', key:'headline' },
-  { title:props.category === 'messages' ? '发送者' : '状态', key:'state', sortable:false, width:180 },
-  { title:'操作', key:'actions', sortable:false, width:120 },
+  { title:'时间', key:'timestamp', width:widths.timestamp }, { title:'会话', key:'conversation', sortable:false, width:widths.conversation },
+  { title:props.category === 'decisions' ? '规划原因' : '内容', key:'headline', width:widths.headline },
+  { title:props.category === 'messages' ? '发送者' : '状态', key:'state', sortable:false, width:widths.state },
+  { title:'操作', key:'actions', sortable:false, width:widths.actions },
 ]);
 function time(value) { return new Date(value * 1000).toLocaleString('zh-CN', { timeZone:props.timezone, hour12:false }); }
 async function load() {
@@ -69,7 +74,7 @@ const detailFields = computed(() => {
   <v-alert v-if="success" type="success" variant="tonal" closable class="mb-4" @click:close="success = ''">{{ success }}</v-alert>
   <div class="d-flex align-center flex-wrap ga-3 mb-4">
     <v-btn :prepend-icon="mdiFilterVariant" :aria-expanded="filtersOpen" aria-controls="record-filters" @click="filtersOpen = !filtersOpen">{{ filtersOpen ? '隐藏筛选' : '显示筛选' }}</v-btn>
-    <div class="text-body-2 text-medium-emphasis flex-grow-1">共 {{ total }} 条 · 已选 {{ selected.length }} 条（当前页） · {{ timezone }}</div>
+    <div class="text-body-2 text-medium-emphasis flex-grow-1">共 {{ total }} 条 · 已选 {{ selected.length }} 条（当前页）</div>
     <v-btn color="error" :prepend-icon="mdiDeleteOutline" :disabled="!selected.length || loading" @click="confirm = true">删除所选</v-btn>
   </div>
   <div class="records-layout">
@@ -79,11 +84,12 @@ const detailFields = computed(() => {
       </div>
     </v-expand-x-transition>
     <v-card class="records-list" rounded="xl">
-    <v-data-table-server v-model="selected" v-model:page="page" v-model:items-per-page="limit" v-model:sort-by="sort" class="records-table" :headers="headers" :items="rows" :items-length="total" :loading="loading" :items-per-page-options="[10,25,50,100]" item-value="key" show-select select-strategy="page" must-sort hover>
+    <v-data-table-server v-model="selected" v-model:page="page" v-model:items-per-page="limit" v-model:sort-by="sort" class="records-table" :style="{'--records-width':`${tableWidth}px`}" :headers="headers" :items="rows" :items-length="total" :loading="loading" :items-per-page-options="[10,25,50,100]" item-value="key" show-select select-strategy="page" must-sort hover>
+      <template #headers="controls"><ResizableHeaders v-bind="controls" :widths="widths" :defaults="defaultWidths" @resize="widths[$event.key] = $event.width" /></template>
       <template #item.timestamp="{item}">{{ time(item.timestamp) }}</template>
       <template #item.conversation="{item}">
-        <div v-if="sessionTitles[item.conversation] && sessionTitles[item.conversation] !== item.conversation" class="text-body-2 text-break">{{ sessionTitles[item.conversation] }}</div>
-        <span class="text-caption text-break">{{ item.conversation }}</span>
+        <div class="text-body-2 text-truncate" :title="sessionLabel(item.conversation,sessionTitles[item.conversation])">{{ sessionLabel(item.conversation,sessionTitles[item.conversation]) }}</div>
+        <div class="text-caption text-medium-emphasis text-truncate" :title="item.conversation">{{ item.conversation }}</div>
       </template>
       <template #item.headline="{item}"><span class="text-body-2 text-break">{{ item.headline?.slice(0,180) }}{{ item.headline?.length > 180 ? '…' : '' }}</span></template>
       <template #item.state="{item}">
@@ -133,6 +139,7 @@ const detailFields = computed(() => {
 .records-list { flex: 1 1 0; min-width: 0; }
 .decision-state { min-width: 0; max-width: 100%; }
 .records-table :deep(tbody td) { height: auto !important; padding-block: 12px; vertical-align: middle; }
+.records-table :deep(table) { table-layout: fixed; width: var(--records-width); min-width: 100%; }
 @media (max-width: 800px) {
   .records-layout { flex-direction: column; align-items: stretch; }
   .filter-column { width: 100%; margin-bottom: 16px; }

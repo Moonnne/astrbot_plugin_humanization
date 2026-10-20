@@ -340,12 +340,21 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
         assert instance.runtime.storage.path.exists()
         saved = json.loads((tmp_path / "config.json").read_text(encoding="utf-8-sig"))
         for name in ("behavior", "group"):
-            assert saved["prompts"][name] == schema["prompts"]["items"][name]["default"]
+            assert not saved["prompts"][name].strip()
             assert (
-                await instance.runtime.prompts.fragment(name) == saved["prompts"][name]
+                await instance.runtime.prompts.fragment(name)
+                == instance.runtime.prompts.text[name].strip()
             )
         assert saved["prompts"]["expression"] == "Existing custom expression"
-        assert set(instance.runtime.prompts.text) == {"gate", "summary", "output"}
+        assert set(instance.runtime.prompts.text) == {
+            "gate",
+            "summary",
+            "output",
+            "behavior",
+            "expression",
+            "group",
+            "private",
+        }
         assert instance.runtime.log.limits["runtime.log"] == 3 * 1024**2
     finally:
         await instance.terminate()

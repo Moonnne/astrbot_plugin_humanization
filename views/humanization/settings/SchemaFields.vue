@@ -1,5 +1,6 @@
 <script setup>
 import { mdiPlus, mdiDeleteOutline } from '@mdi/js';
+import ResourceSelector from '../shared/ResourceSelector.vue';
 const props = defineProps({ schema:Object, model:Object, choices:Object });
 function visible(field) { return Object.entries(field.condition || {}).every(([key,value]) => props.model[key] === value); }
 function options(field) {
@@ -39,6 +40,7 @@ function updateNumber(key, value) { props.model[key] = value === '' ? '' : Numbe
         </v-slider>
         <p class="text-caption text-medium-emphasis">{{ field.hint }}</p>
       </template>
+      <ResourceSelector v-else-if="['select_provider','select_persona'].includes(field._special)" v-model="model[key]" :kind="field._special" :label="field.description" :hint="field.hint" :items="choices[field._special] || []" />
       <v-autocomplete v-else-if="field.options || field._special" v-model="model[key]" :label="field.description" :hint="field.hint" persistent-hint :items="options(field)" :multiple="field.type === 'list'" :chips="field.type === 'list'" :closable-chips="field.type === 'list'" />
       <v-combobox v-else-if="field.type === 'list'" v-model="model[key]" :label="field.description" :hint="field.hint" persistent-hint multiple chips closable-chips />
       <v-text-field v-else-if="['int','float'].includes(field.type)" :model-value="model[key]" :label="field.description" :hint="field.hint" persistent-hint type="number" :step="field.type === 'int' ? 1 : 'any'" @update:model-value="updateNumber(key,$event)" />

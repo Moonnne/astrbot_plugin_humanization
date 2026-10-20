@@ -50,6 +50,7 @@ async def dashboard(plugin, tmp_path, config):
     plugin.context.get_db = lambda: SimpleNamespace(
         get_umo_aliases=AsyncMock(return_value=[])
     )
+    plugin.context.get_platform_inst = lambda platform_id: None
     schema = json.loads(
         (Path(__file__).resolve().parents[1] / "_conf_schema.json").read_text(
             encoding="utf-8"
@@ -304,7 +305,15 @@ async def test_busy_scope_is_not_modified(dashboard):
 
 @pytest.mark.parametrize(
     "endpoint",
-    ["overview", "records", "delete", "settings", "save_settings", "reset_all"],
+    [
+        "overview",
+        "records",
+        "delete",
+        "settings",
+        "save_settings",
+        "reset_all",
+        "prompt_diff",
+    ],
 )
 async def test_endpoints_require_dashboard_identity(dashboard, endpoint):
     assert (await invoke(getattr(dashboard, endpoint), username=None))[0] == 403
@@ -342,7 +351,7 @@ async def test_config_validation_revision_and_native_reload(dashboard):
 async def test_registration_cleanup_preserves_other_plugins(dashboard):
     dashboard.register()
     apis = dashboard.plugin.context.registered_web_apis
-    assert len(apis) == 6
+    assert len(apis) == 7
     other = ("/other/ping", object(), ["GET"], "ping")
     apis.append(other)
     dashboard.close()
@@ -393,3 +402,101 @@ async def test_reset_all_reports_partial_failure(dashboard):
     )
     assert status == 500 and "部分会话可能已重置" in result["message"]
     assert "internal path" not in result["message"]
+
+
+async def test_onebot_group_names_are_batched_and_cached(dashboard):
+    client = SimpleNamespace(
+        call_action=AsyncMock(
+            return_value=[{"group_id": 123, "group_name": "真正的群名"}]
+        )
+    )
+    platform = SimpleNamespace(
+        meta=lambda: SimpleNamespace(name="aiocqhttp"), get_client=lambda: client
+    )
+    dashboard.runtime.adapter.context.get_platform_inst = lambda platform_id: platform
+    dashboard.runtime.adapter.context.get_db = lambda: SimpleNamespace(
+        get_umo_aliases=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    umo="onebot:GroupMessage:123",
+                    user_alias="",
+                    auto_name=None,
+                    creator_sender_id="42",
+                )
+            ]
+        )
+    )
+    for _ in range(2):
+        _, result = await invoke(dashboard.overview)
+        assert result["sessions"][0]["title"] == "真正的群名"
+    client.call_action.assert_awaited_once_with("get_group_list")
+
+
+async def test_group_name_failure_retains_cache_and_respects_alias(dashboard):
+    client = SimpleNamespace(call_action=AsyncMock(side_effect=RuntimeError("offline")))
+    platform = SimpleNamespace(
+        meta=lambda: SimpleNamespace(name="aiocqhttp"), get_client=lambda: client
+    )
+    adapter = dashboard.runtime.adapter
+    adapter.context.get_platform_inst = lambda platform_id: platform
+    adapter.group_names["onebot"] = (0, {"123": "缓存群名"})
+    for _ in range(2):
+        _, result = await invoke(dashboard.overview)
+        assert result["sessions"][0]["title"] == "缓存群名"
+    client.call_action.assert_awaited_once()
+    adapter.context.get_db = lambda: SimpleNamespace(
+        get_umo_aliases=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    umo="onebot:GroupMessage:123",
+                    user_alias="我的群备注",
+                    auto_name="旧群名",
+                    creator_sender_id="42",
+                )
+            ]
+        )
+    )
+    _, result = await invoke(dashboard.overview)
+    assert result["sessions"][0]["title"] == "我的群备注"
+    client.call_action.assert_awaited_once()
+
+
+@pytest.mark.parametrize("name", ["behavior", "expression", "group", "private"])
+async def test_default_prompts_are_runtime_fallbacks_not_config_values(dashboard, name):
+    prompts = dashboard.runtime.prompts
+    assert prompts.settings.prompts[name] == ""
+    assert await prompts.fragment(name) == prompts.text[name].strip()
+    assert prompts.settings.prompts[name] == ""
+    prompts.settings.prompts[name] = "我的自定义提示词"
+    assert await prompts.fragment(name) == "我的自定义提示词"
+    prompts.settings.prompts[name + "_persona"] = "chosen"
+    prompts.persona_manager.get_persona.return_value = SimpleNamespace(
+        system_prompt="人格正文"
+    )
+    assert await prompts.fragment(name) == "人格正文"
+    prompts.persona_manager.get_persona.return_value = SimpleNamespace(
+        system_prompt="  "
+    )
+    assert await prompts.fragment(name) == prompts.text[name].strip()
+
+
+async def test_prompt_diff_reads_default_without_saving(dashboard):
+    before = Path(dashboard.plugin.config.config_path).read_bytes()
+    status, result = await invoke(
+        dashboard.prompt_diff, body={"name": "behavior", "text": "自定义规划\n新的一行"}
+    )
+    assert status == 200
+    assert "--- 默认提示词" in result["lines"]
+    assert "+自定义规划" in result["lines"]
+    assert any(
+        line.startswith("-") and not line.startswith("---") for line in result["lines"]
+    )
+    _, result = await invoke(
+        dashboard.prompt_diff, body={"name": "behavior", "text": "  "}
+    )
+    assert result["lines"] == []
+    status, _ = await invoke(
+        dashboard.prompt_diff, body={"name": "../../main", "text": "bad"}
+    )
+    assert status == 400
+    assert Path(dashboard.plugin.config.config_path).read_bytes() == before

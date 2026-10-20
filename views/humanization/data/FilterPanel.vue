@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import { mdiMagnify, mdiChevronLeft, mdiFilterRemoveOutline } from '@mdi/js';
 import { emotions, outcomes } from './options.js';
+import { sessionLabel } from '../shared/session.js';
 const props = defineProps({ category:String, model:Object, sessions:Array, active:Boolean });
 const sessionMenu = ref(false);
 watch(() => props.active, active => { if (!active) sessionMenu.value = false; });
@@ -14,7 +15,7 @@ function toggle(key,value) {
 }
 function matchSession(value, query, item) {
   const search = query.toLocaleLowerCase();
-  return [item.raw.title,item.raw.umo].some(text => text.toLocaleLowerCase().includes(search));
+  return `${sessionLabel(item.raw.umo,item.raw.title)} ${item.raw.umo}`.toLocaleLowerCase().includes(search);
 }
 </script>
 <template>
@@ -29,7 +30,7 @@ function matchSession(value, query, item) {
     <v-autocomplete v-model="model.sessions" v-model:menu="sessionMenu" class="session-select" label="会话" placeholder="搜索名称或 UMO，多选" :items="sessions" item-title="title" :custom-filter="matchSession" :menu-props="{maxWidth:520}" density="compact" multiple chips closable-chips hide-details>
       <template #chip="{props,item}"><v-chip v-bind="props" class="text-truncate" max-width="100%" :title="item.raw.umo">{{ item.raw.title }}</v-chip></template>
       <template #item="{props,item}">
-        <v-list-item v-bind="props" role="option" :title="item.raw.title" :subtitle="item.raw.umo">
+        <v-list-item v-bind="props" role="option" :title="sessionLabel(item.raw.umo,item.raw.title)" :subtitle="item.raw.umo">
           <template #prepend="{isSelected}"><v-checkbox-btn :model-value="isSelected" :ripple="false" tabindex="-1" /></template>
         </v-list-item>
       </template>

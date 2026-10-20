@@ -169,6 +169,8 @@ class AstrBotAdapter:
         self.log = log
         self.robot_cache = OrderedDict()
         self.robot_slots = asyncio.Semaphore(4)
+        self.group_names = {}
+        self.group_names_lock = asyncio.Lock()
 
     async def is_group_robot(self, event, sender_id: str) -> bool:
         """Resolve a group sender using bounded, short-lived platform metadata.
@@ -565,7 +567,7 @@ class AstrBotAdapter:
         )
         return permitted
 
-    async def session_options(self) -> dict[str, str]:
+    async def session_options(self, resolve_groups: bool = False) -> dict[str, str]:
         database = self.context.get_db()
         rows = await database.get_umo_aliases()
         options = {row.umo: row.user_alias or row.auto_name or row.umo for row in rows}
@@ -577,16 +579,59 @@ class AstrBotAdapter:
                 group_id = sid.removeprefix(prefix)
                 group_umo = f"{platform}:GroupMessage:{group_id}"
                 groups[group_umo] = (
-                    row.user_alias
-                    or row.auto_name
-                    or groups.get(group_umo)
-                    or f"群 {group_id}（{platform}）"
+                    row.user_alias or row.auto_name or groups.get(group_umo) or group_id
                 )
         # Preserve exact-route aliases; isolated member routes also name the group.
         for umo, name in groups.items():
             if options.get(umo, umo) == umo:
                 options[umo] = name
+        if resolve_groups:
+            for umo in (
+                self.settings.scope["sessions"] + self.settings.scope["manual_sessions"]
+            ):
+                parts = umo.split(":", 2)
+                if len(parts) == 3 and parts[1] == "GroupMessage":
+                    platform, _, sid = parts
+                    group_id = sid.rsplit("_", 1)[-1]
+                    groups.setdefault(f"{platform}:GroupMessage:{group_id}", group_id)
+            for umo, name in groups.items():
+                options.setdefault(umo, name)
+            aliases = {row.umo: row.user_alias for row in rows}
+            for platform in {umo.split(":", 1)[0] for umo in groups}:
+                names = await self._group_names(platform)
+                for umo in groups:
+                    instance, _, group_id = umo.split(":", 2)
+                    if instance == platform and group_id in names:
+                        options[umo] = aliases.get(umo) or names[group_id]
         return options
+
+    async def _group_names(self, platform_id: str) -> dict[str, str]:
+        """Read OneBot group names once per instance, with a ten-minute cache."""
+        async with self.group_names_lock:
+            cached = self.group_names.get(platform_id)
+            if cached and cached[0] > time.monotonic():
+                return cached[1]
+            platform = self.context.get_platform_inst(platform_id)
+            if platform is None or platform.meta().name != "aiocqhttp":
+                return {}
+            try:
+                async with asyncio.timeout(3):
+                    groups = await platform.get_client().call_action("get_group_list")
+                names = {
+                    str(group["group_id"]): group["group_name"]
+                    for group in groups
+                    if group.get("group_name")
+                }
+                self.group_names[platform_id] = (time.monotonic() + 600, names)
+            except Exception as exc:
+                names = cached[1] if cached else {}
+                self.group_names[platform_id] = (time.monotonic() + 60, names)
+                self.log.debug(
+                    "scope.names.unavailable",
+                    platform=platform_id,
+                    error=type(exc).__name__,
+                )
+            return names
 
     async def request(self, event):
         """Collect native media and conversation before yielding to the Agent.

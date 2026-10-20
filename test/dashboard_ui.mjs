@@ -25,7 +25,8 @@ const records = {
   topics:rows.map(row=>({...row,day:'2026-10-19',topic:'讨论天气',interact:['测试用户分享天气'],reply:'我简短回应',reaction:'未见明确反应'})),
   diaries:rows.map(row=>({...row,day:'2026-10-19',sealed:0,topic_count:2,coverage_gap:0,topics:[]})),
 };
-const seed = {schema,config,revision:'initial',reset_confirmation:'CLEAR_ALL_HUMANIZATION_DATA',choices:{select_provider:[{title:'DeepSeek',value:'deepseek'}]}};
+const promptDefaults = Object.fromEntries(await Promise.all(['behavior','expression','group','private'].map(async name=>[name,(await readFile(join(root,`resource/prompts/${name}.txt`),'utf8')).trim()])));
+const seed = {schema,config,prompt_defaults:promptDefaults,revision:'initial',reset_confirmation:'CLEAR_ALL_HUMANIZATION_DATA',choices:{select_provider:[{title:'DeepSeek',value:'deepseek'}],select_persona:[{title:'测试人格',value:'persona1',description:'角色片段内容'}]}};
 const harness = `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0">
 <iframe title="Humanization" src="/view/" sandbox="allow-scripts allow-forms allow-downloads" style="width:100%;height:100vh;border:0"></iframe>
 <script>
@@ -44,6 +45,7 @@ window.addEventListener('message', event => {
   if(m.endpoint==='records') {const items=records[m.params.category].filter(r=>!(window.deleted[m.params.category]||[]).includes(r.key));data={items,total:items.length};}
   if(m.endpoint==='records/delete') { (window.deleted[m.body.category] ||= []).push(...m.body.keys); data={deleted:m.body.keys.length}; }
   if(m.endpoint==='settings') data=settings;
+  if(m.endpoint==='prompts/diff') data={lines:!m.body.text.trim() || m.body.text === settings.prompt_defaults[m.body.name] ? [] : ['--- 默认提示词','+++ 自定义草稿','-'+settings.prompt_defaults[m.body.name],...m.body.text.split('\\n').map(line=>'+'+line)]};
   if(m.endpoint==='settings/save') {
     if(window.failSave) {frame.contentWindow.postMessage({channel:'astrbot-plugin-page',kind:'response',requestId:m.requestId,ok:false,error:'模拟保存失败'},'*');return;}
     window.saved=m.body; settings.config=m.body.config; settings.revision=String(Date.now()); data={saved:true,reloaded:true};
@@ -75,9 +77,11 @@ const executablePath = process.env.HUMANIZATION_BROWSER || [
 ].find(existsSync);
 const browser = await chromium.launch({headless:true,...(executablePath ? {executablePath} : {})});
 const output = await mkdtemp(join(tmpdir(),'humanization-ui-'));
+let page;
+const errors = [];
 try {
-  const page = await browser.newPage({viewport:{width:1280,height:960}, reducedMotion:'reduce'});
-  const errors = [];
+  page = await browser.newPage({viewport:{width:1280,height:960}, reducedMotion:'reduce'});
+  page.setDefaultTimeout(10000);
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   const view = page.frameLocator('iframe');
@@ -89,12 +93,25 @@ try {
     await expect(view.getByText('配置与原生插件设置共用同一份文件。保存后重载插件生效，进行中的回复可能中断。',{exact:true})).toBeHidden();
     await view.getByRole('tab',{name:'统计',exact:true}).click();
   }
-  await expect(view.getByRole('tab')).toHaveCount(6);
+  await expect(view.getByRole('tab')).toHaveCount(7);
+  await expect(view.getByRole('tab').last()).toHaveText('设置');
   await expect(view.getByRole('button',{name:'刷新数据'})).not.toHaveClass(/v-btn--loading/);
   await page.screenshot({path:join(output,'overview.png'),animations:'disabled'});
   await view.getByRole('tab',{name:'聊天',exact:true}).click();
   await expect(view.getByText('天气很好 1',{exact:true})).toBeVisible();
   await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeVisible();
+  if (process.argv.includes('--workspace-upgrade')) {
+    await expect(view.getByText('onebot · 群聊 · 测试群',{exact:true}).first()).toBeVisible();
+    const separator = view.getByRole('separator',{name:'调整会话列宽',exact:true});
+    const box = await separator.boundingBox();
+    const calls = await page.evaluate(()=>window.calls.filter(call=>call.endpoint === 'records').length);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down(); await page.mouse.move(box.x + box.width / 2 + 80,box.y + box.height / 2,{steps:8}); await page.mouse.up();
+    await expect(separator).toHaveAttribute('aria-valuenow','440');
+    await separator.press('ArrowLeft'); await expect(separator).toHaveAttribute('aria-valuenow','424');
+    await separator.dblclick(); await expect(separator).toHaveAttribute('aria-valuenow','360');
+    expect(await page.evaluate(()=>window.calls.filter(call=>call.endpoint === 'records').length)).toBe(calls);
+  }
   if (process.argv.includes('--filter-regression')) {
     await page.emulateMedia({reducedMotion:'no-preference'});
     const frame = page.frames().find(f=>f.url().includes('/view/'));
@@ -141,7 +158,7 @@ try {
   await view.getByRole('button',{name:'隐藏筛选',exact:true}).click();
   await expect(view.getByRole('listbox')).toBeHidden();
   await view.getByRole('button',{name:'显示筛选',exact:true}).click();
-  await expect(view.getByText('测试群',{exact:true}).first()).toBeVisible();
+  await expect(view.getByText('onebot · 群聊 · 测试群',{exact:true}).first()).toBeVisible();
   await page.screenshot({path:join(output,'filters.png'),animations:'disabled'});
   await view.getByRole('button',{name:'群聊',exact:true}).click();
   await expect(view.getByRole('button',{name:'群聊',exact:true})).toHaveAttribute('aria-pressed','true');
@@ -173,6 +190,34 @@ try {
   await expect(view.getByText('已删除 2 条聊天记录',{exact:true})).toBeVisible();
   await view.getByRole('tab',{name:'设置',exact:true}).click();
   await expect(view.getByRole('heading',{name:'Controller 聊天行为规划与控制',exact:true})).toBeVisible();
+  if (process.argv.includes('--workspace-upgrade')) {
+    await expect(view.getByLabel('行为风格文本',{exact:true})).toHaveCount(0);
+    await expect(view.locator('.settings-grid')).toHaveClass(/settings-grid--double/);
+    await view.getByRole('button',{name:'切换为单列',exact:true}).click();
+    await expect(view.locator('.settings-grid')).not.toHaveClass(/settings-grid--double/);
+    await view.getByRole('button',{name:'切换为双列',exact:true}).click();
+    const nav = view.getByRole('complementary',{name:'设置快速导航'});
+    await nav.getByRole('button',{name:'日志设置',exact:true}).click();
+    await expect(view.getByRole('heading',{name:'日志设置',exact:true})).toBeInViewport();
+    await nav.getByRole('button',{name:'行为规划',exact:true}).click();
+    await expect(view.getByRole('heading',{name:'Controller 聊天行为规划与控制',exact:true})).toBeInViewport();
+    const current = nav.getByRole('button',{name:'行为规划',exact:true});
+    await expect(current).toHaveAttribute('aria-current','location');
+    await expect(current).toHaveClass(/v-list-item--active/);
+    await expect(current).toHaveCSS('color','rgb(60, 150, 202)');
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await iframe.evaluate(()=>document.getElementById('setting-danger').scrollIntoView({block:'start',behavior:'instant'}));
+    await expect(nav.getByRole('button',{name:'危险操作',exact:true})).toHaveAttribute('aria-current','location');
+    await expect(current).not.toHaveAttribute('aria-current','location');
+    await iframe.evaluate(()=>document.getElementById('setting-controller').scrollIntoView({block:'start',behavior:'instant'}));
+    await expect(current).toHaveAttribute('aria-current','location');
+    await nav.getByRole('button',{name:'主动发言',exact:true}).click();
+    await expect(nav.getByRole('button',{name:'主动发言',exact:true})).toHaveAttribute('aria-current','location');
+    await nav.getByRole('button',{name:'行为规划',exact:true}).click();
+    await page.screenshot({path:join(output,'settings-columns.png'),animations:'disabled'});
+    await view.getByRole('button',{name:'收起设置导航',exact:true}).click();
+    await view.getByRole('button',{name:'展开设置导航',exact:true}).click();
+  }
   await expect(view.locator('.v-expansion-panels')).toHaveCount(0);
   await expect(view.getByLabel('消息调度模式：最短补偿等待（秒）')).toBeVisible();
   await view.getByLabel('工作模式',{exact:true}).click();
@@ -247,6 +292,58 @@ try {
   await expect(view.getByRole('dialog')).toBeHidden();
   expect(await page.evaluate(()=>window.resetCount)).toBe(1);
   await page.screenshot({path:join(output,'settings-danger.png'),animations:'disabled'});
+  if (process.argv.includes('--workspace-upgrade')) {
+    await view.getByRole('tab',{name:'提示词',exact:true}).click();
+    const behavior = view.getByRole('region',{name:'行为规划提示词',exact:true});
+    const text = behavior.getByLabel('行为风格文本',{exact:true});
+    await expect(text).toHaveValue(promptDefaults.behavior);
+    await expect(behavior.getByLabel('行为规划字数和Token估算')).toContainText(`${Array.from(promptDefaults.behavior).length} 字`);
+    await expect(view.getByRole('button',{name:'保存并重载',exact:true})).toBeDisabled();
+    await view.getByRole('tab',{name:'设置',exact:true}).click();
+    await expect(view.getByRole('dialog')).toBeHidden();
+    await view.getByRole('tab',{name:'提示词',exact:true}).click();
+    await expect(text).toHaveValue(promptDefaults.behavior);
+    await page.screenshot({path:join(output,'prompt-defaults.png'),animations:'disabled'});
+    await expect(view.getByRole('region',{name:'危险操作区',exact:true})).toHaveCount(0);
+    await behavior.getByRole('button',{name:'查看默认',exact:true}).click();
+    await expect(view.getByRole('dialog')).toContainText(promptDefaults.behavior);
+    await view.getByRole('button',{name:'复制到输入框',exact:true}).click();
+    await expect(text).toHaveValue(promptDefaults.behavior);
+    const draft = '自定义规划\n额外短评';
+    await text.fill(draft);
+    await expect(behavior.getByLabel('行为规划字数和Token估算')).toContainText(`${Array.from(draft).length} 字`);
+    await behavior.getByRole('button',{name:'查看差异',exact:true}).click();
+    await expect(view.getByRole('dialog')).toContainText('+自定义规划');
+    await expect(view.locator('.diff-add').first()).toHaveCSS('display','block');
+    await page.screenshot({path:join(output,'prompt-diff.png'),animations:'disabled'});
+    await view.getByRole('button',{name:'关闭',exact:true}).click();
+    await behavior.getByLabel('行为风格人格片段',{exact:true}).click();
+    await view.getByLabel('搜索人格',{exact:true}).fill('测试人格');
+    await view.getByRole('option',{name:/测试人格/}).click();
+    await expect(view.getByRole('dialog')).toContainText('角色片段内容');
+    await view.getByRole('button',{name:'确定',exact:true}).click();
+    await expect(behavior).toContainText('已选人格正文');
+    await behavior.getByRole('button',{name:'使用默认',exact:true}).click();
+    await expect(text).toHaveValue(promptDefaults.behavior);
+    await expect(view.getByRole('button',{name:'保存并重载',exact:true})).toBeDisabled();
+    await text.fill('');
+    await text.blur();
+    await expect(text).toHaveValue(promptDefaults.behavior);
+    await text.fill('保存用草稿');
+    await view.getByRole('tab',{name:'统计',exact:true}).click();
+    await expect(view.getByRole('dialog')).toContainText('Humanization 提示词有未保存的更改');
+    await view.getByRole('button',{name:'继续编辑',exact:true}).click();
+    await expect(view.getByRole('dialog')).toBeHidden();
+    await expect(text).toHaveValue('保存用草稿');
+    await page.screenshot({path:join(output,'prompts.png'),animations:'disabled'});
+    await view.getByRole('button',{name:'保存并重载',exact:true}).click();
+    await view.getByRole('button',{name:'确认保存',exact:true}).click();
+    await expect(view.getByText('配置已保存，插件已重载',{exact:true})).toBeVisible();
+    expect(await page.evaluate(()=>window.saved.config.prompts.behavior)).toBe('保存用草稿');
+    expect(await page.evaluate(()=>window.saved.config.prompts.expression)).toBe('');
+    await view.getByRole('tab',{name:'设置',exact:true}).click();
+    await expect(view.getByRole('heading',{name:'日志设置',exact:true})).toBeVisible();
+  }
   await page.setViewportSize({width:390,height:844});
   await page.evaluate(()=>window.context(true));
   await expect(view.locator('.v-application')).toHaveClass(/v-theme--dark/);
@@ -254,6 +351,7 @@ try {
   await expect(view.getByRole('heading',{name:'Humanization'})).toHaveCSS('color','rgb(232, 234, 237)');
   await page.screenshot({path:join(output,'mobile-settings.png')});
   expect(await iframe.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+  await expect(view.getByRole('button',{name:'切换为双列',exact:true})).toBeDisabled();
   await view.getByRole('tab',{name:'聊天',exact:true}).click();
   await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeVisible();
   await page.screenshot({path:join(output,'mobile-filters.png'),animations:'disabled'});
@@ -263,6 +361,10 @@ try {
   await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeHidden();
   expect(errors).toEqual([]);
   console.log(`Sandbox bridge UI checks passed. Screenshots: ${output}`);
+} catch (error) {
+  if (page) await page.screenshot({path:join(output,'failure.png'),animations:'disabled'});
+  console.error(JSON.stringify({browserErrors:errors,screenshot:join(output,'failure.png')}));
+  throw error;
 } finally {
   await browser.close();
   await new Promise(resolve=>server.close(resolve));

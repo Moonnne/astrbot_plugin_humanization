@@ -2,6 +2,7 @@
 
 import asyncio
 import copy
+import difflib
 import hashlib
 import json
 from contextlib import AsyncExitStack
@@ -35,6 +36,7 @@ class Dashboard:
             ("records/delete", self.delete, "POST"),
             ("settings", self.settings, "GET"),
             ("settings/save", self.save_settings, "POST"),
+            ("prompts/diff", self.prompt_diff, "POST"),
             ("data/reset-all", self.reset_all, "POST"),
         ):
             route = f"/{self.plugin_name}/{endpoint}"
@@ -85,7 +87,7 @@ class Dashboard:
                 )
             )[0]
         configured = self.runtime.settings.scope
-        labels = await self.runtime.adapter.session_options()
+        labels = await self.runtime.adapter.session_options(resolve_groups=True)
         sessions = {self.conversation(row["scope"]) for row in scopes}
         sessions.update(configured["sessions"] + configured["manual_sessions"])
         sessions = {umo for umo in sessions if self.runtime.settings.selected(umo, umo)}
@@ -254,12 +256,20 @@ class Dashboard:
         if denied := self.authorize():
             return denied
         schema = copy.deepcopy(self.plugin.config.schema)
+        sessions = await self.runtime.adapter.session_options(resolve_groups=True)
+        schema["scope"]["items"]["sessions"].update(
+            options=list(sessions), labels=list(sessions.values())
+        )
         providers = [
             {"title": p.meta().id, "value": p.meta().id}
             for p in self.plugin.context.get_all_providers()
         ]
         personas = [
-            {"title": p.persona_id, "value": p.persona_id}
+            {
+                "title": p.persona_id,
+                "value": p.persona_id,
+                "description": p.system_prompt,
+            }
             for p in await self.plugin.context.persona_manager.get_all_personas()
         ]
         tools = [
@@ -271,6 +281,10 @@ class Dashboard:
                 "schema": schema,
                 "config": {key: self.plugin.config[key] for key in schema},
                 "revision": self.revision(self.plugin.config),
+                "prompt_defaults": {
+                    name: self.runtime.prompts.text[name].strip()
+                    for name in ("behavior", "expression", "group", "private")
+                },
                 "reset_confirmation": self.runtime.admin.all_confirmation,
                 "choices": {
                     "select_provider": providers,
@@ -279,6 +293,30 @@ class Dashboard:
                 },
             }
         )
+
+    async def prompt_diff(self):
+        """Compare an unsaved prompt draft with its bundled default."""
+        if denied := self.authorize():
+            return denied
+        payload = await request.json(default={})
+        if (
+            not isinstance(payload, dict)
+            or payload.get("name") not in ("behavior", "expression", "group", "private")
+            or not isinstance(payload.get("text"), str)
+        ):
+            return error_response("提示词名称或文本无效")
+        original = self.runtime.prompts.text[payload["name"]].strip()
+        draft = payload["text"] if payload["text"].strip() else original
+        lines = list(
+            difflib.unified_diff(
+                original.splitlines(),
+                draft.splitlines(),
+                fromfile="默认提示词",
+                tofile="自定义草稿",
+                lineterm="",
+            )
+        )
+        return json_response({"lines": lines})
 
     async def save_settings(self):
         """Validate the complete schema, persist it and await the host plugin reload.

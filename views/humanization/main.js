@@ -13,7 +13,8 @@ import { VDialog } from 'vuetify/components/VDialog';
 import { VDivider } from 'vuetify/components/VDivider';
 import { VIcon } from 'vuetify/components/VIcon';
 import { VMain } from 'vuetify/components/VMain';
-import { VListItem } from 'vuetify/components/VList';
+import { VList, VListItem } from 'vuetify/components/VList';
+import { VMenu } from 'vuetify/components/VMenu';
 import { VProgressLinear } from 'vuetify/components/VProgressLinear';
 import { VContainer, VRow, VCol, VSpacer } from 'vuetify/components/VGrid';
 import { VSelect } from 'vuetify/components/VSelect';
@@ -33,7 +34,7 @@ import App from './App.vue';
 const vuetify = createVuetify({
   components: {
     VApp, VAlert, VAutocomplete, VBtn, VCard, VCardActions, VCardText, VCardTitle,
-    VChip, VCheckboxBtn, VCombobox, VDataTableServer, VDialog, VDivider, VIcon, VMain, VListItem,
+    VChip, VCheckboxBtn, VCombobox, VDataTableServer, VDialog, VDivider, VIcon, VMain, VList, VListItem, VMenu,
     VProgressLinear, VContainer, VRow, VCol, VSpacer, VSelect, VSlider,
     VSnackbar, VSwitch, VTable, VTextField, VTextarea, VExpandXTransition,
   },

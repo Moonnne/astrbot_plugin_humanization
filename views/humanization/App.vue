@@ -1,6 +1,6 @@
 <script setup>
 import { ref, inject, onMounted, watch } from 'vue';
-import { mdiChartBar, mdiMessageTextOutline, mdiHeartOutline, mdiForumOutline, mdiBookOpenPageVariantOutline, mdiCogOutline, mdiRefresh, mdiClose } from '@mdi/js';
+import { mdiChartBar, mdiMessageTextOutline, mdiHeartOutline, mdiForumOutline, mdiBookOpenPageVariantOutline, mdiCogOutline, mdiRefresh, mdiClose, mdiTextBoxOutline } from '@mdi/js';
 import Overview from './overview/Overview.vue';
 import Records from './data/Records.vue';
 import Settings from './settings/Settings.vue';
@@ -19,7 +19,8 @@ let generation = 0;
 const tabs = [
   ['overview', '统计', mdiChartBar], ['messages', '聊天', mdiMessageTextOutline],
   ['decisions', '最近反应', mdiHeartOutline], ['topics', '话题', mdiForumOutline],
-  ['diaries', '日记', mdiBookOpenPageVariantOutline], ['settings', '设置', mdiCogOutline],
+  ['diaries', '日记', mdiBookOpenPageVariantOutline], ['prompts', '提示词', mdiTextBoxOutline],
+  ['settings', '设置', mdiCogOutline],
 ];
 async function load() {
   const current = ++generation;
@@ -34,7 +35,7 @@ async function load() {
 function reload() { refresh.value++; load(); }
 function navigate(value) {
   if (value === tab.value || switching.value || settings.value?.saving) return;
-  if (tab.value === 'settings' && settings.value?.dirty) pendingTab.value = value;
+  if (['settings','prompts'].includes(tab.value) && settings.value?.dirty) pendingTab.value = value;
   else tab.value = value;
 }
 async function leaveSettings(save) {
@@ -68,7 +69,7 @@ onMounted(load);
         <v-alert v-if="error" type="error" variant="tonal" class="mb-4">{{ error }}</v-alert>
         <v-autocomplete v-if="tab === 'overview'" v-model="scope" :items="[{ title: '全部会话', value: '' }, ...overview.sessions]" label="统计会话范围" hide-details class="mb-5" />
         <Overview v-if="tab === 'overview'" :stats="overview.stats" @browse="navigate" />
-        <Settings v-else-if="tab === 'settings'" ref="settings" @changed="load" />
+        <Settings v-else-if="['settings','prompts'].includes(tab)" :key="tab" ref="settings" :prompts-only="tab === 'prompts'" @changed="load" />
         <Records v-else :key="tab" :category="tab" :sessions="overview.sessions" :refresh="refresh" :timezone="overview.timezone" @changed="load" />
       </v-container>
       <v-dialog :model-value="pendingTab !== null" persistent max-width="540">
@@ -77,7 +78,7 @@ onMounted(load);
             <span>未保存的更改</span><v-btn :icon="mdiClose" aria-label="继续编辑" variant="text" :disabled="switching" @click="pendingTab = null" />
           </v-card-title>
           <v-card-text>
-            <p class="font-weight-bold mb-2">Humanization 配置有未保存的更改，切换前是否保存？</p>
+            <p class="font-weight-bold mb-2">Humanization {{ tab === 'prompts' ? '提示词' : '配置' }}有未保存的更改，切换前是否保存？</p>
             <p class="text-body-2 text-medium-emphasis">确定：保存并重载插件后切换；取消：放弃更改并切换；关闭弹窗：继续编辑。</p>
           </v-card-text>
           <v-card-actions><v-spacer /><v-btn variant="text" :disabled="switching" @click="leaveSettings(false)">取消</v-btn><v-btn color="error" variant="tonal" :loading="switching" @click="leaveSettings(true)">确定</v-btn></v-card-actions>
