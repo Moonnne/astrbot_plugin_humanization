@@ -32,12 +32,14 @@ class Humanization(Star):
     @filter.on_astrbot_loaded()
     async def refresh_sessions(self):
         choices = await self.runtime.adapter.session_options()
-        choices.update(
-            {umo: choices.get(umo, umo) for umo in self.config["scope"]["sessions"]}
-        )
-        item = self.config.schema["scope"]["items"]["sessions"]
-        item["options"] = list(choices)
-        item["labels"] = list(choices.values())
+        for key in ("sessions", "blacklist_sessions"):
+            choices.update(
+                {umo: choices.get(umo, umo) for umo in self.config["scope"][key]}
+            )
+        for key in ("sessions", "blacklist_sessions"):
+            item = self.config.schema["scope"]["items"][key]
+            item["options"] = list(choices)
+            item["labels"] = list(choices.values())
         self.runtime.log.debug("scope.options.updated", option_count=len(choices))
         items = self.config.schema["controller"]["items"]
         for key in ("group", "private"):
@@ -103,6 +105,17 @@ class Humanization(Star):
 
     @filter.custom_filter(ScopeFilter, priority=maxsize)
     async def prepare_input(self, event: AstrMessageEvent):
+        if self.runtime.adapter.is_plugin_command(
+            event
+        ) or ManagementMessageFilter().filter(event, {}):
+            return
+        action = self.runtime.adapter.scope_action(event)
+        if action == "drop":
+            event.stop_event()
+            return
+        if action == "listen":
+            self.runtime.adapter.suppress_native_llm(event)
+            return
         await self.runtime.adapter.filter_group_robot(event)
         if self.runtime.settings.controller["enabled"]:
             self.runtime.adapter.suppress_empty_mention(event)

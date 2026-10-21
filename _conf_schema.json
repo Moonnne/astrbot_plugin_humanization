@@ -7,14 +7,14 @@
         "type": "bool",
         "description": "全部会话",
         "default": false,
-        "hint": "启用后将自动监听所有 OneBot 会话；Controller 开启时同时抑制默认 LLM 并代理回复。"
+        "hint": "关闭时通过白名单选择启用插件的 OneBot 会话；开启时处理全部会话，黑名单中的会话按下方策略处理。范围策略在 Recorder 开启时生效，已匹配的插件指令始终豁免。"
       },
       "sessions": {
         "type": "list",
         "description": "选择已知会话",
         "default": [],
         "options": [],
-        "hint": "从宿主已知会话中多选。启动／重载时刷新列表。\n未选择任何范围时不接管任何会话。",
+        "hint": "白名单：从宿主已知会话中多选，所选会话正常启用插件。启动／重载时刷新列表。",
         "condition": {
           "all_sessions": false
         }
@@ -27,6 +27,39 @@
         "condition": {
           "all_sessions": false
         }
+      },
+      "outside_action": {
+        "type": "string",
+        "description": "范围外会话处理方式",
+        "default": "ignore",
+        "options": ["ignore", "listen", "drop"],
+        "labels": ["忽略（由 AstrBot 处理）", "监听（只记录，禁止 LLM）", "丢弃（停止后续处理）"],
+        "hint": "白名单未命中时：忽略会跳过插件并交由 AstrBot；监听沿用 Recorder 入库过滤，不整理日记、不调用 Controller 或主模型，普通插件指令正常执行；丢弃不入库并停止普通消息后续处理。已匹配的插件指令及其 LLM 请求始终豁免范围策略。",
+        "condition": {"all_sessions": false}
+      },
+      "blacklist_sessions": {
+        "type": "list",
+        "description": "选择禁用会话",
+        "default": [],
+        "options": [],
+        "hint": "黑名单：所选会话不正常启用插件，改用下方处理方式；未命中黑名单的会话正常启用插件。",
+        "condition": {"all_sessions": true}
+      },
+      "blacklist_manual_sessions": {
+        "type": "list",
+        "description": "补充禁用会话 UMO",
+        "default": [],
+        "hint": "可通过 /sid 获取实际 UMO。群聊填写 [平台实例]:GroupMessage:[群号]，私聊填写 [平台实例]:FriendMessage:[用户号]。方括号是占位符，请替换为实际值。",
+        "condition": {"all_sessions": true}
+      },
+      "blacklist_action": {
+        "type": "string",
+        "description": "会话处理方式",
+        "default": "ignore",
+        "options": ["ignore", "listen", "drop"],
+        "labels": ["忽略（由 AstrBot 处理）", "监听（只记录，禁止 LLM）", "丢弃（停止后续处理）"],
+        "hint": "仅用于命中黑名单的普通消息。忽略：跳过插件，由 AstrBot 处理；监听：只入库，不整理日记，不调用 Controller 或主模型；丢弃：不入库，停止后续处理。已匹配的插件指令及其 LLM 请求始终豁免范围策略。",
+        "condition": {"all_sessions": true}
       }
     }
   },
@@ -65,7 +98,7 @@
         "type": "bool",
         "description": "过滤群机器人消息",
         "default": true,
-        "hint": "依据 SnowLuma 成员信息 is_robot 识别。启用后，已确认机器人的新消息不入插件库、不计数、不触发回复；接管的主模型过滤可识别的机器人历史及引用，以插件观察替代原生群聊文本块，原生存档保留。身份查询失败时保留消息；不清理旧记录、旧日记或工具主动查询的结果。仅在 Recorder 启用且选中的群生效。"
+        "hint": "依据 SnowLuma 成员信息 is_robot 识别。启用后，已确认机器人的新消息不入插件库、不计数、不触发回复；接管的主模型过滤可识别的机器人历史及引用，以插件观察替代原生群聊文本块，原生存档保留。身份查询失败时保留消息；不清理旧记录、旧日记或工具主动查询的结果。在 Recorder 启用且正常处理或仅监听的群聊生效。"
       },
       "retention": {
         "type": "int",

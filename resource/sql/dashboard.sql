@@ -61,6 +61,24 @@ WHERE (:sessions='[]' OR (
  AND ({filters})
 ORDER BY {order}, scope, id LIMIT :limit OFFSET :skip
 
+-- name: sort_conversation
+COALESCE((SELECT NULLIF(value,key) FROM json_each(:session_labels) WHERE key=
+ json_extract(scope,'$[0]') || ':' || CASE json_extract(scope,'$[2]')
+ WHEN 'private' THEN 'FriendMessage' ELSE 'GroupMessage' END || ':' || json_extract(scope,'$[3]')),
+ json_extract(scope,'$[3]')) COLLATE NOCASE
+
+-- name: sort_state_messages
+sender_name COLLATE NOCASE
+
+-- name: sort_state_decisions
+outcome COLLATE NOCASE
+
+-- name: sort_state_topics
+day
+
+-- name: sort_state_diaries
+sealed
+
 -- name: filter_messages
 (:kind='' OR direction=:kind)
  AND (:sender='' OR instr(lower(sender_name || ' ' || sender_id),lower(:sender))>0)

@@ -486,17 +486,101 @@ async def test_prompt_diff_reads_default_without_saving(dashboard):
         dashboard.prompt_diff, body={"name": "behavior", "text": "自定义规划\n新的一行"}
     )
     assert status == 200
-    assert "--- 默认提示词" in result["lines"]
-    assert "+自定义规划" in result["lines"]
-    assert any(
-        line.startswith("-") and not line.startswith("---") for line in result["lines"]
-    )
+    assert not result["identical"]
+    assert [row["left"]["text"] for row in result["rows"] if row["left"]] == [
+        "自定义规划",
+        "新的一行",
+    ]
+    assert any(row["kind"] != "equal" for row in result["rows"])
     _, result = await invoke(
         dashboard.prompt_diff, body={"name": "behavior", "text": "  "}
     )
-    assert result["lines"] == []
+    assert result["identical"]
+    assert all(row["kind"] == "equal" for row in result["rows"])
     status, _ = await invoke(
         dashboard.prompt_diff, body={"name": "../../main", "text": "bad"}
     )
     assert status == 400
     assert Path(dashboard.plugin.config.config_path).read_bytes() == before
+
+
+async def test_prompt_diff_aligns_lines_and_highlights_changed_characters(dashboard):
+    dashboard.runtime.prompts.text["behavior"] = "相同\n旧内容\n尾行"
+    _, result = await invoke(
+        dashboard.prompt_diff,
+        body={"name": "behavior", "text": "相同\n新内容\n尾行\n新增"},
+    )
+    rows = result["rows"]
+    assert rows[0]["kind"] == "equal"
+    assert rows[1]["left"]["segments"] == [
+        {"text": "新", "changed": True},
+        {"text": "内容", "changed": False},
+    ]
+    assert rows[1]["right"]["segments"][0] == {"text": "旧", "changed": True}
+    assert rows[3]["left"]["number"] == 4 and rows[3]["right"] is None
+    _, result = await invoke(
+        dashboard.prompt_diff, body={"name": "behavior", "text": "相同\n尾行"}
+    )
+    assert result["rows"][1]["left"] is None
+    assert result["rows"][1]["right"]["text"] == "旧内容"
+
+
+@pytest.mark.parametrize("category", ["messages", "decisions", "topics", "diaries"])
+@pytest.mark.parametrize("sort", ["timestamp", "headline", "conversation", "state"])
+async def test_visible_table_columns_sort_in_both_directions(dashboard, category, sort):
+    for order in ("asc", "desc"):
+        status, result = await invoke(
+            dashboard.records,
+            query={"category": category, "sort": sort, "order": order},
+        )
+        assert status == 200 and result["total"] > 0
+
+
+async def test_conversation_sort_uses_names_and_sender_sort_uses_senders(dashboard):
+    message = dashboard.runtime.adapter.snapshot(
+        Event("另一群的消息", message_id="other")
+    )
+    await dashboard.runtime.storage.append(
+        replace(
+            message,
+            scope=json.dumps(["onebot", "999", "group", "456"]),
+            umo="onebot:GroupMessage:456",
+            group_id="456",
+            sender_name="AAA",
+            message_id="other",
+        )
+    )
+    dashboard.runtime.adapter.session_options = AsyncMock(
+        return_value={
+            "onebot:GroupMessage:123": "Z 群",
+            "onebot:GroupMessage:456": "A 群",
+        }
+    )
+    for sort in ("conversation", "state"):
+        _, ascending = await invoke(
+            dashboard.records, query={"sort": sort, "order": "asc"}
+        )
+        _, descending = await invoke(
+            dashboard.records, query={"sort": sort, "order": "desc"}
+        )
+        assert ascending["items"][0]["conversation"] == "onebot:GroupMessage:456"
+        assert descending["items"][-1]["conversation"] == "onebot:GroupMessage:456"
+
+
+@pytest.mark.parametrize("all_sessions", [False, True])
+@pytest.mark.parametrize("action", ["ignore", "listen", "drop"])
+async def test_dashboard_lists_record_only_sessions_but_not_ignored_or_dropped(
+    dashboard, all_sessions, action
+):
+    dashboard.runtime.settings.scope.update(
+        all_sessions=all_sessions,
+        sessions=[],
+        manual_sessions=[],
+        blacklist_sessions=["onebot:GroupMessage:123"],
+        outside_action=action,
+        blacklist_action=action,
+    )
+    _, result = await invoke(dashboard.overview)
+    assert [session["umo"] for session in result["sessions"]] == (
+        ["onebot:GroupMessage:123"] if action == "listen" else []
+    )

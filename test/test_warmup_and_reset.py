@@ -111,6 +111,7 @@ async def test_warmup_shares_group_rows_and_exempts_private_chats(managed):
     group = event.get_extra("humanization_message")
     assert await managed.ready_context(group.scope)
     private = admin_event("chat", private=True)
+    managed.settings.scope["manual_sessions"].append(private.unified_msg_origin)
     await consume(managed.observe(private))
     assert await managed.ready_context(private.get_extra("humanization_message").scope)
     await managed.reset_scope(group, None)

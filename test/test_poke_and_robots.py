@@ -138,7 +138,7 @@ async def test_robot_prepare_keeps_native_persistence_and_other_plugins(plugin):
     event = Event(direct=True)
     event.bot = SimpleNamespace(call_action=AsyncMock(return_value={"is_robot": True}))
     handlers = [
-        SimpleNamespace(handler_module_path=module, handler_name=name)
+        SimpleNamespace(handler_module_path=module, handler_name=name, event_filters=[])
         for module, name in [
             ("astrbot.builtin_stars.astrbot.main", "persist_group_message"),
             ("astrbot.builtin_stars.astrbot.main", "on_message"),

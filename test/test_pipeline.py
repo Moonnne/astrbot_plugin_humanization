@@ -307,6 +307,13 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
         assert schema["controller"]["items"][name]["condition"] == {"mode": "scheduled"}
     for name in ("sessions", "manual_sessions"):
         assert schema["scope"]["items"][name]["condition"] == {"all_sessions": False}
+    for name in ("blacklist_sessions", "blacklist_manual_sessions", "blacklist_action"):
+        assert schema["scope"]["items"][name]["condition"] == {"all_sessions": True}
+    assert (
+        config["scope"]["outside_action"]
+        == config["scope"]["blacklist_action"]
+        == "ignore"
+    )
     config["prompts"]["behavior"] = ""
     config["prompts"]["group"] = "  "
     config["prompts"]["expression"] = "Existing custom expression"
@@ -336,6 +343,9 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
     try:
         options = config.schema["scope"]["items"]["sessions"]["options"]
         assert "onebot:GroupMessage:123" in options
+        assert (
+            config.schema["scope"]["items"]["blacklist_sessions"]["options"] == options
+        )
         assert not instance.runtime.settings.scope["sessions"]
         assert instance.runtime.storage.path.exists()
         saved = json.loads((tmp_path / "config.json").read_text(encoding="utf-8-sig"))

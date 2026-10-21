@@ -25,6 +25,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
 from astrbot.core.provider.entities import TokenUsage
 from astrbot.core.star.filter.command import CommandFilter
 from astrbot.core.star.filter.command_group import CommandGroupFilter
+from astrbot.core.star.filter.regex import RegexFilter
 from astrbot.core.star.session_llm_manager import SessionServiceManager
 from astrbot.core.star.session_plugin_manager import SessionPluginManager
 
@@ -48,7 +49,7 @@ class ScopeFilter(filter.CustomFilter):
         ):
             return False
         group_umo = f"{event.get_platform_id()}:GroupMessage:{event.get_group_id()}"
-        return settings.selected(event.unified_msg_origin, group_umo)
+        return settings.scope_action(event.unified_msg_origin, group_umo) != "ignore"
 
 
 class IdleEvent(AstrMessageEvent):
@@ -263,17 +264,7 @@ class AstrBotAdapter:
         if not await self.is_group_robot(event, str(event.get_sender_id())):
             return False
         event.set_extra("humanization_filtered_robot", True)
-        event.should_call_llm(True)
-        handlers = event.get_extra("activated_handlers")
-        if handlers:
-            handlers[:] = [
-                handler
-                for handler in handlers
-                if not (
-                    handler.handler_module_path == "astrbot.builtin_stars.astrbot.main"
-                    and handler.handler_name in {"handle_empty_mention", "on_message"}
-                )
-            ]
+        self.suppress_native_llm(event)
         self.log.debug(
             "message.filtered", reason="group_robot", sender_id=event.get_sender_id()
         )
@@ -352,19 +343,67 @@ class AstrBotAdapter:
             day=datetime.fromtimestamp(now, self.settings.timezone).date().isoformat(),
         )
 
-    def is_command(self, event) -> bool:
+    def scope_action(self, event) -> str:
+        """Resolve an event's ordinary-message policy using its shared group route.
+
+        Args:
+            event: A OneBot group or private message event.
+
+        Returns:
+            The configured route action, without applying command exemptions.
+        """
+        group = str(event.get_group_id() or "")
+        route = (
+            f"{event.get_platform_id()}:GroupMessage:{group}"
+            if group
+            else event.unified_msg_origin
+        )
+        return self.settings.scope_action(event.unified_msg_origin, route)
+
+    @staticmethod
+    def is_plugin_command(event) -> bool:
+        """Recognize commands already matched by AstrBot, without guessing prefixes.
+
+        Args:
+            event: Event after native handler matching.
+
+        Returns:
+            Whether a matched handler is a command, command group or regex command.
+        """
         handlers = event.get_extra("activated_handlers") or []
-        if any(
-            isinstance(f, (CommandFilter, CommandGroupFilter))
+        return any(
+            isinstance(f, (CommandFilter, CommandGroupFilter, RegexFilter))
             for handler in handlers
             for f in handler.event_filters
-        ):
+        )
+
+    def is_command(self, event) -> bool:
+        if self.is_plugin_command(event):
             return True
         # WakingCheck may have stripped a wake prefix from message_str.
         raw = "".join(
             p.text for p in event.get_messages() if isinstance(p, Plain)
         ).lstrip()
         return self.settings.is_command_text(raw)
+
+    @staticmethod
+    def suppress_native_llm(event):
+        """Disable native model triggers while preserving command handlers and storage.
+
+        Args:
+            event: Current event with its mutable activated handler list.
+        """
+        event.should_call_llm(True)
+        handlers = event.get_extra("activated_handlers")
+        if handlers:
+            handlers[:] = [
+                handler
+                for handler in handlers
+                if not (
+                    handler.handler_module_path == "astrbot.builtin_stars.astrbot.main"
+                    and handler.handler_name in {"handle_empty_mention", "on_message"}
+                )
+            ]
 
     @staticmethod
     def suppress_empty_mention(event):
@@ -587,7 +626,10 @@ class AstrBotAdapter:
                 options[umo] = name
         if resolve_groups:
             for umo in (
-                self.settings.scope["sessions"] + self.settings.scope["manual_sessions"]
+                self.settings.scope["sessions"]
+                + self.settings.scope["manual_sessions"]
+                + self.settings.scope["blacklist_sessions"]
+                + self.settings.scope["blacklist_manual_sessions"]
             ):
                 parts = umo.split(":", 2)
                 if len(parts) == 3 and parts[1] == "GroupMessage":

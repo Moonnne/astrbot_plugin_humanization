@@ -19,7 +19,7 @@ class Dashboard:
 
     plugin_name = "astrbot_plugin_humanization"
     categories = {"messages", "decisions", "topics", "diaries"}
-    sorts = {"timestamp", "headline", "seq"}
+    sorts = {"timestamp", "headline", "seq", "conversation", "state"}
 
     def __init__(self, plugin):
         self.plugin = plugin
@@ -89,8 +89,17 @@ class Dashboard:
         configured = self.runtime.settings.scope
         labels = await self.runtime.adapter.session_options(resolve_groups=True)
         sessions = {self.conversation(row["scope"]) for row in scopes}
-        sessions.update(configured["sessions"] + configured["manual_sessions"])
-        sessions = {umo for umo in sessions if self.runtime.settings.selected(umo, umo)}
+        sessions.update(
+            configured["sessions"]
+            + configured["manual_sessions"]
+            + configured["blacklist_sessions"]
+            + configured["blacklist_manual_sessions"]
+        )
+        sessions = {
+            umo
+            for umo in sessions
+            if self.runtime.settings.scope_action(umo, umo) in ("active", "listen")
+        }
         return json_response(
             {
                 "stats": stats,
@@ -145,6 +154,12 @@ class Dashboard:
             "offset": f"{offset:+g} seconds",
             "limit": limit,
             "skip": (page - 1) * limit,
+            "session_labels": json.dumps(
+                await self.runtime.adapter.session_options(resolve_groups=True)
+                if sort == "conversation"
+                else {},
+                ensure_ascii=False,
+            ),
         }
         for field in (
             "sender",
@@ -160,6 +175,13 @@ class Dashboard:
             args[field] = request.query.get(field, "")
         source = self.sql[f"dashboard.{category}"]
         filters = self.sql[f"dashboard.filter_{category}"]
+        sort_expression = (
+            self.sql["dashboard.sort_conversation"]
+            if sort == "conversation"
+            else self.sql[f"dashboard.sort_state_{category}"]
+            if sort == "state"
+            else sort
+        )
         # Only fixed resource names and whitelisted sort identifiers enter SQL.
         async with self.database.snapshot() as tx:
             total = (
@@ -170,7 +192,7 @@ class Dashboard:
             )[0]["total"]
             rows = await tx.rows(
                 self.sql["dashboard.page"].format(
-                    source=source, filters=filters, order=f"{sort} {order}"
+                    source=source, filters=filters, order=f"{sort_expression} {order}"
                 ),
                 args,
             )
@@ -257,9 +279,10 @@ class Dashboard:
             return denied
         schema = copy.deepcopy(self.plugin.config.schema)
         sessions = await self.runtime.adapter.session_options(resolve_groups=True)
-        schema["scope"]["items"]["sessions"].update(
-            options=list(sessions), labels=list(sessions.values())
-        )
+        for key in ("sessions", "blacklist_sessions"):
+            schema["scope"]["items"][key].update(
+                options=list(sessions), labels=list(sessions.values())
+            )
         providers = [
             {"title": p.meta().id, "value": p.meta().id}
             for p in self.plugin.context.get_all_providers()
@@ -295,7 +318,11 @@ class Dashboard:
         )
 
     async def prompt_diff(self):
-        """Compare an unsaved prompt draft with its bundled default."""
+        """Align draft/default lines and changed characters without saving.
+
+        Returns:
+            An authenticated JSON response with comparison rows and equality.
+        """
         if denied := self.authorize():
             return denied
         payload = await request.json(default={})
@@ -307,16 +334,43 @@ class Dashboard:
             return error_response("提示词名称或文本无效")
         original = self.runtime.prompts.text[payload["name"]].strip()
         draft = payload["text"] if payload["text"].strip() else original
-        lines = list(
-            difflib.unified_diff(
-                original.splitlines(),
-                draft.splitlines(),
-                fromfile="默认提示词",
-                tofile="自定义草稿",
-                lineterm="",
-            )
-        )
-        return json_response({"lines": lines})
+        original_lines, draft_lines = original.splitlines(), draft.splitlines()
+        rows = []
+        for kind, a, end_a, b, end_b in difflib.SequenceMatcher(
+            None, original_lines, draft_lines, autojunk=False
+        ).get_opcodes():
+            for index in range(max(end_a - a, end_b - b)):
+                left = (
+                    {"number": b + index + 1, "text": draft_lines[b + index]}
+                    if b + index < end_b
+                    else None
+                )
+                right = (
+                    {"number": a + index + 1, "text": original_lines[a + index]}
+                    if a + index < end_a
+                    else None
+                )
+                for cell in (left, right):
+                    if cell is not None:
+                        cell["segments"] = [
+                            {"text": cell["text"], "changed": kind != "equal"}
+                        ]
+                if kind == "replace" and left and right:
+                    changes = difflib.SequenceMatcher(
+                        None, right["text"], left["text"], autojunk=False
+                    ).get_opcodes()
+                    left["segments"] = [
+                        {"text": left["text"][y:z], "changed": tag != "equal"}
+                        for tag, _, _, y, z in changes
+                        if y != z
+                    ]
+                    right["segments"] = [
+                        {"text": right["text"][y:z], "changed": tag != "equal"}
+                        for tag, y, z, _, _ in changes
+                        if y != z
+                    ]
+                rows.append({"kind": kind, "left": left, "right": right})
+        return json_response({"rows": rows, "identical": original == draft})
 
     async def save_settings(self):
         """Validate the complete schema, persist it and await the host plugin reload.

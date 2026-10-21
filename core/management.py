@@ -132,9 +132,9 @@ class Management:
         settings = self.runtime.settings
         now = datetime.now(settings.timezone).strftime("%Y-%m-%d %H:%M:%S %z")
         if not data["message_count"] and not data["diary_count"]:
-            enabled = settings.recorder["enabled"] and settings.selected(
+            enabled = settings.recorder["enabled"] and settings.scope_action(
                 str(route), query_umo
-            )
+            ) in ("active", "listen")
             status = (
                 ("指定会话无记录" if umo else "当前会话无记录")
                 if enabled

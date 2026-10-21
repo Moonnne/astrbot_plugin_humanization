@@ -1,7 +1,7 @@
-import { r as resolveComponent, o as openBlock, c as createElementBlock, a as createVNode, w as withCtx, F as Fragment, b as renderList, d as createBaseVNode, t as toDisplayString, e as createTextVNode, f as computed, g as createCommentVNode, h as createBlock, i as ref, j as watch, u as unref, m as mdiFilterRemoveOutline, k as mdiChevronLeft, l as mdiMagnify, n as mergeProps, p as normalizeClass, q as pushScopeId, s as popScopeId, v as onBeforeUnmount, x as normalizeStyle, y as withModifiers, z as withKeys, A as inject, B as reactive, C as mdiFilterVariant, D as mdiDeleteOutline, E as withDirectives, G as vShow, H as mdiEyeOutline, I as mdiChevronDown, J as mdiPlus, K as mdiFileDocumentOutline, L as mdiFileCompare, M as mdiRestore, N as onMounted, O as mdiRefresh, P as mdiContentSaveOutline, Q as mdiMenu, R as mdiDeleteAlertOutline, S as mdiTextBoxOutline, T as mdiShieldAccountOutline, U as mdiMessageTextOutline, V as mdiHeadCogOutline, W as mdiAccountGroupOutline, X as mdiViewStreamOutline, Y as mdiViewColumnOutline, Z as mdiAlertCircleOutline, _ as mdiChartBar, $ as mdiHeartOutline, a0 as mdiForumOutline, a1 as mdiBookOpenPageVariantOutline, a2 as mdiCogOutline, a3 as mdiClose, a4 as createVuetify, a5 as createApp, a6 as zhHans, a7 as mdi, a8 as aliases, a9 as VExpandXTransition, aa as VTextarea, ab as VTextField, ac as VTable, ad as VSwitch, ae as VSnackbar, af as VSlider, ag as VSelect, ah as VSpacer, ai as VCol, aj as VRow, ak as VContainer, al as VProgressLinear, am as VMenu, an as VListItem, ao as VList, ap as VMain, aq as VIcon, ar as VDivider, as as VDialog, at as VDataTableServer, au as VCombobox, av as VCheckboxBtn, aw as VChip, ax as VCardTitle, ay as VCardText, az as VCardActions, aA as VCard, aB as VBtn, aC as VAutocomplete, aD as VAlert, aE as VApp } from "./assets/vendor.js";
-const _hoisted_1$9 = { class: "text-body-2 text-medium-emphasis mb-3" };
-const _hoisted_2$9 = { class: "text-h4 font-weight-bold" };
-const _sfc_main$9 = {
+import { r as resolveComponent, o as openBlock, c as createElementBlock, a as createVNode, w as withCtx, F as Fragment, b as renderList, d as createBaseVNode, t as toDisplayString, e as createTextVNode, f as computed, g as createCommentVNode, h as createBlock, i as ref, j as watch, u as unref, m as mdiFilterRemoveOutline, k as mdiChevronLeft, l as mdiMagnify, n as mergeProps, p as normalizeClass, q as pushScopeId, s as popScopeId, v as onBeforeUnmount, x as normalizeStyle, y as withModifiers, z as mdiArrowUpDown, A as withKeys, B as inject, C as reactive, D as mdiFilterVariant, E as mdiDeleteOutline, G as withDirectives, H as vShow, I as mdiEyeOutline, J as mdiChevronDown, K as mdiPlus, L as mdiFileCompare, M as mdiClose, N as mdiRestore, O as onMounted, P as mdiRefresh, Q as mdiContentSaveOutline, R as mdiMenu, S as mdiDeleteAlertOutline, T as mdiTextBoxOutline, U as mdiShieldAccountOutline, V as mdiMessageTextOutline, W as mdiHeadCogOutline, X as mdiAccountGroupOutline, Y as mdiAlertCircleOutline, Z as mdiChartBar, _ as mdiHeartOutline, $ as mdiForumOutline, a0 as mdiBookOpenPageVariantOutline, a1 as mdiCogOutline, a2 as createVuetify, a3 as createApp, a4 as zhHans, a5 as mdi, a6 as aliases, a7 as VExpandXTransition, a8 as VTextarea, a9 as VTextField, aa as VTable, ab as VSwitch, ac as VSnackbar, ad as VSlider, ae as VSelect, af as VSpacer, ag as VCol, ah as VRow, ai as VContainer, aj as VProgressLinear, ak as VMenu, al as VListItem, am as VList, an as VMain, ao as VIcon, ap as VDivider, aq as VDialog, ar as VDataTableServer, as as VCombobox, at as VCheckboxBtn, au as VChip, av as VCardTitle, aw as VCardText, ax as VCardActions, ay as VCard, az as VBtn, aA as VAutocomplete, aB as VAlert, aC as VApp } from "./assets/vendor.js";
+const _hoisted_1$b = { class: "text-body-2 text-medium-emphasis mb-3" };
+const _hoisted_2$a = { class: "text-h4 font-weight-bold" };
+const _sfc_main$b = {
   __name: "Overview",
   props: { stats: Object },
   emits: ["browse"],
@@ -29,8 +29,8 @@ const _sfc_main$9 = {
                     onClick: ($event) => target && _ctx.$emit("browse", target)
                   }, {
                     default: withCtx(() => [
-                      createBaseVNode("div", _hoisted_1$9, toDisplayString(label), 1),
-                      createBaseVNode("div", _hoisted_2$9, toDisplayString((__props.stats[key] || 0).toLocaleString()), 1)
+                      createBaseVNode("div", _hoisted_1$b, toDisplayString(label), 1),
+                      createBaseVNode("div", _hoisted_2$a, toDisplayString((__props.stats[key] || 0).toLocaleString()), 1)
                     ]),
                     _: 2
                   }, 1032, ["link", "onClick"])
@@ -55,25 +55,25 @@ const _sfc_main$9 = {
     };
   }
 };
-const _hoisted_1$8 = {
+const _hoisted_1$a = {
   key: 0,
   class: "text-medium-emphasis"
 };
-const _hoisted_2$8 = {
+const _hoisted_2$9 = {
   key: 1,
   class: "d-flex flex-column ga-2"
 };
-const _hoisted_3$8 = {
+const _hoisted_3$9 = {
   key: 0,
   class: "text-medium-emphasis"
 };
-const _hoisted_4$8 = { class: "text-medium-emphasis text-no-wrap align-top py-2" };
-const _hoisted_5$7 = { class: "text-break py-2" };
-const _hoisted_6$7 = {
+const _hoisted_4$9 = { class: "text-medium-emphasis text-no-wrap align-top py-2" };
+const _hoisted_5$8 = { class: "text-break py-2" };
+const _hoisted_6$8 = {
   key: 3,
   class: "text-body-2 text-pre-wrap text-break"
 };
-const _sfc_main$8 = {
+const _sfc_main$a = {
   __name: "JsonValue",
   props: { value: { default: null } },
   setup(__props) {
@@ -92,8 +92,8 @@ const _sfc_main$8 = {
       const _component_JsonValue = resolveComponent("JsonValue", true);
       const _component_v_card = resolveComponent("v-card");
       const _component_v_table = resolveComponent("v-table");
-      return parsed.value === null ? (openBlock(), createElementBlock("div", _hoisted_1$8, "—")) : Array.isArray(parsed.value) ? (openBlock(), createElementBlock("div", _hoisted_2$8, [
-        !parsed.value.length ? (openBlock(), createElementBlock("span", _hoisted_3$8, "无")) : createCommentVNode("", true),
+      return parsed.value === null ? (openBlock(), createElementBlock("div", _hoisted_1$a, "—")) : Array.isArray(parsed.value) ? (openBlock(), createElementBlock("div", _hoisted_2$9, [
+        !parsed.value.length ? (openBlock(), createElementBlock("span", _hoisted_3$9, "无")) : createCommentVNode("", true),
         (openBlock(true), createElementBlock(Fragment, null, renderList(parsed.value, (item, index) => {
           return openBlock(), createBlock(_component_v_card, {
             key: index,
@@ -113,8 +113,8 @@ const _sfc_main$8 = {
           createBaseVNode("tbody", null, [
             (openBlock(true), createElementBlock(Fragment, null, renderList(parsed.value, (item, key) => {
               return openBlock(), createElementBlock("tr", { key }, [
-                createBaseVNode("td", _hoisted_4$8, toDisplayString(labels[key] || key), 1),
-                createBaseVNode("td", _hoisted_5$7, [
+                createBaseVNode("td", _hoisted_4$9, toDisplayString(labels[key] || key), 1),
+                createBaseVNode("td", _hoisted_5$8, [
                   createVNode(_component_JsonValue, { value: item }, null, 8, ["value"])
                 ])
               ]);
@@ -122,7 +122,7 @@ const _sfc_main$8 = {
           ])
         ]),
         _: 1
-      })) : (openBlock(), createElementBlock("div", _hoisted_6$7, toDisplayString(parsed.value === true ? "是" : parsed.value === false ? "否" : parsed.value), 1));
+      })) : (openBlock(), createElementBlock("div", _hoisted_6$8, toDisplayString(parsed.value === true ? "是" : parsed.value === false ? "否" : parsed.value), 1));
     };
   }
 };
@@ -163,23 +163,23 @@ const _export_sfc = (sfc, props) => {
   }
   return target;
 };
-const _withScopeId$5 = (n) => (pushScopeId("data-v-92641de0"), n = n(), popScopeId(), n);
-const _hoisted_1$7 = { class: "d-flex align-center ga-1 mb-4" };
-const _hoisted_2$7 = /* @__PURE__ */ _withScopeId$5(() => /* @__PURE__ */ createBaseVNode("span", { class: "text-subtitle-1 font-weight-bold flex-grow-1" }, "筛选", -1));
-const _hoisted_3$7 = {
+const _withScopeId$6 = (n) => (pushScopeId("data-v-92641de0"), n = n(), popScopeId(), n);
+const _hoisted_1$9 = { class: "d-flex align-center ga-1 mb-4" };
+const _hoisted_2$8 = /* @__PURE__ */ _withScopeId$6(() => /* @__PURE__ */ createBaseVNode("span", { class: "text-subtitle-1 font-weight-bold flex-grow-1" }, "筛选", -1));
+const _hoisted_3$8 = {
   key: 0,
   class: "text-caption text-medium-emphasis mt-2"
 };
-const _hoisted_4$7 = /* @__PURE__ */ _withScopeId$5(() => /* @__PURE__ */ createBaseVNode("p", { class: "filter-label mt-5" }, "对话类型", -1));
-const _hoisted_5$6 = { class: "type-options" };
-const _hoisted_6$6 = ["aria-pressed", "onClick"];
-const _hoisted_7$6 = /* @__PURE__ */ _withScopeId$5(() => /* @__PURE__ */ createBaseVNode("p", { class: "filter-label" }, "消息方向", -1));
-const _hoisted_8$5 = { class: "type-options mb-4" };
+const _hoisted_4$8 = /* @__PURE__ */ _withScopeId$6(() => /* @__PURE__ */ createBaseVNode("p", { class: "filter-label mt-5" }, "对话类型", -1));
+const _hoisted_5$7 = { class: "type-options" };
+const _hoisted_6$7 = ["aria-pressed", "onClick"];
+const _hoisted_7$6 = /* @__PURE__ */ _withScopeId$6(() => /* @__PURE__ */ createBaseVNode("p", { class: "filter-label" }, "消息方向", -1));
+const _hoisted_8$4 = { class: "type-options mb-4" };
 const _hoisted_9$3 = ["aria-pressed", "onClick"];
-const _hoisted_10$2 = /* @__PURE__ */ _withScopeId$5(() => /* @__PURE__ */ createBaseVNode("p", { class: "filter-label" }, "回复决定", -1));
+const _hoisted_10$3 = /* @__PURE__ */ _withScopeId$6(() => /* @__PURE__ */ createBaseVNode("p", { class: "filter-label" }, "回复决定", -1));
 const _hoisted_11$1 = { class: "type-options mb-4" };
 const _hoisted_12$1 = ["aria-pressed", "onClick"];
-const _sfc_main$7 = {
+const _sfc_main$9 = {
   __name: "FilterPanel",
   props: { category: String, model: Object, sessions: Array, active: Boolean },
   emits: ["collapse", "reset"],
@@ -217,8 +217,8 @@ const _sfc_main$7 = {
         rounded: "xl"
       }, {
         default: withCtx(() => [
-          createBaseVNode("div", _hoisted_1$7, [
-            _hoisted_2$7,
+          createBaseVNode("div", _hoisted_1$9, [
+            _hoisted_2$8,
             createVNode(_component_v_btn, {
               icon: unref(mdiFilterRemoveOutline),
               "aria-label": "重置筛选",
@@ -293,9 +293,9 @@ const _sfc_main$7 = {
             ]),
             _: 1
           }, 8, ["modelValue", "menu", "items"]),
-          !__props.sessions.length ? (openBlock(), createElementBlock("p", _hoisted_3$7, "尚无已启用的会话")) : createCommentVNode("", true),
-          _hoisted_4$7,
-          createBaseVNode("div", _hoisted_5$6, [
+          !__props.sessions.length ? (openBlock(), createElementBlock("p", _hoisted_3$8, "尚无已启用的会话")) : createCommentVNode("", true),
+          _hoisted_4$8,
+          createBaseVNode("div", _hoisted_5$7, [
             (openBlock(), createElementBlock(Fragment, null, renderList([["group", "群聊"], ["private", "私聊"]], ([value, title]) => {
               return createBaseVNode("button", {
                 key: value,
@@ -303,13 +303,13 @@ const _sfc_main$7 = {
                 class: normalizeClass(["type-option", { "type-option--selected": __props.model.chat_type === value }]),
                 "aria-pressed": __props.model.chat_type === value,
                 onClick: ($event) => toggle("chat_type", value)
-              }, toDisplayString(title), 11, _hoisted_6$6);
+              }, toDisplayString(title), 11, _hoisted_6$7);
             }), 64))
           ]),
           createVNode(_component_v_divider, { class: "my-5" }),
           __props.category === "messages" ? (openBlock(), createElementBlock(Fragment, { key: 1 }, [
             _hoisted_7$6,
-            createBaseVNode("div", _hoisted_8$5, [
+            createBaseVNode("div", _hoisted_8$4, [
               (openBlock(), createElementBlock(Fragment, null, renderList([["in", "收到消息"], ["out", "发出回复"]], ([value, title]) => {
                 return createBaseVNode("button", {
                   key: value,
@@ -335,7 +335,7 @@ const _sfc_main$7 = {
               "hide-details": ""
             }, null, 8, ["modelValue", "items"])
           ], 64)) : __props.category === "decisions" ? (openBlock(), createElementBlock(Fragment, { key: 2 }, [
-            _hoisted_10$2,
+            _hoisted_10$3,
             createBaseVNode("div", _hoisted_11$1, [
               (openBlock(), createElementBlock(Fragment, null, renderList([["1", "回复"], ["0", "观望"]], ([value, title]) => {
                 return createBaseVNode("button", {
@@ -439,17 +439,17 @@ const _sfc_main$7 = {
     };
   }
 };
-const FilterPanel = /* @__PURE__ */ _export_sfc(_sfc_main$7, [["__scopeId", "data-v-92641de0"]]);
-const _hoisted_1$6 = ["aria-sort", "onClick"];
-const _hoisted_2$6 = ["onClick"];
-const _hoisted_3$6 = { key: 1 };
-const _hoisted_4$6 = ["aria-label", "aria-valuenow", "aria-valuemin", "onPointerdown", "onDblclick", "onKeydown"];
-const _sfc_main$6 = {
+const FilterPanel = /* @__PURE__ */ _export_sfc(_sfc_main$9, [["__scopeId", "data-v-92641de0"]]);
+const _hoisted_1$8 = ["aria-sort", "onClick"];
+const _hoisted_2$7 = ["aria-label", "onClick"];
+const _hoisted_3$7 = { key: 1 };
+const _hoisted_4$7 = ["aria-label", "aria-valuenow", "aria-valuemin", "onPointerdown", "onDblclick", "onKeydown"];
+const _sfc_main$8 = /* @__PURE__ */ Object.assign({ inheritAttrs: false }, {
   __name: "ResizableHeaders",
   props: { columns: Array, widths: Object, defaults: Object, sortBy: Array, isSorted: Function, toggleSort: Function, getSortIcon: Function, allSelected: Boolean, someSelected: Boolean, selectAll: Function },
   emits: ["resize"],
   setup(__props, { emit }) {
-    const minimum = (key) => key === "conversation" || key === "headline" ? 180 : 96;
+    const minimum = (key) => ({ timestamp: 144, conversation: 128, headline: 160, state: 112, actions: 88 })[key] || 48;
     let dragging;
     function resize(key, width) {
       emit("resize", { key, width: Math.max(minimum(key), Math.round(width)) });
@@ -480,6 +480,8 @@ const _sfc_main$6 = {
           var _a;
           return openBlock(), createElementBlock("th", {
             key: column.key,
+            scope: "col",
+            class: normalizeClass({ "record-actions": column.key === "actions", "sortable": column.sortable }),
             style: normalizeStyle({ width: `${__props.widths[column.key] || 48}px`, minWidth: `${__props.widths[column.key] || 48}px` }),
             "aria-sort": column.sortable ? __props.isSorted(column) ? ((_a = __props.sortBy.find((item) => item.key === column.key)) == null ? void 0 : _a.order) === "desc" ? "descending" : "ascending" : "none" : void 0,
             onClick: ($event) => column.sortable && __props.toggleSort(column)
@@ -495,16 +497,18 @@ const _sfc_main$6 = {
                 key: 0,
                 type: "button",
                 class: "sort-heading",
+                "aria-label": `按${column.title}排序`,
                 onClick: withModifiers(($event) => __props.toggleSort(column), ["stop"])
               }, [
                 createTextVNode(toDisplayString(column.title), 1),
-                __props.isSorted(column) ? (openBlock(), createBlock(_component_v_icon, {
-                  key: 0,
-                  icon: __props.getSortIcon(column),
-                  size: "18"
-                }, null, 8, ["icon"])) : createCommentVNode("", true)
-              ], 8, _hoisted_2$6)) : (openBlock(), createElementBlock("span", _hoisted_3$6, toDisplayString(column.title), 1)),
-              createBaseVNode("span", {
+                createVNode(_component_v_icon, {
+                  icon: __props.isSorted(column) ? __props.getSortIcon(column) : unref(mdiArrowUpDown),
+                  class: normalizeClass({ "sort-idle": !__props.isSorted(column) }),
+                  size: "16"
+                }, null, 8, ["icon", "class"])
+              ], 8, _hoisted_2$7)) : (openBlock(), createElementBlock("span", _hoisted_3$7, toDisplayString(column.title), 1)),
+              column.key !== "actions" ? (openBlock(), createElementBlock("span", {
+                key: 2,
                 role: "separator",
                 "aria-orientation": "vertical",
                 "aria-label": `调整${column.title}列宽`,
@@ -520,29 +524,29 @@ const _sfc_main$6 = {
                   withKeys(withModifiers(($event) => resize(column.key, __props.widths[column.key] - 16), ["prevent"]), ["left"]),
                   withKeys(withModifiers(($event) => resize(column.key, __props.widths[column.key] + 16), ["prevent"]), ["right"])
                 ]
-              }, null, 40, _hoisted_4$6)
+              }, null, 40, _hoisted_4$7)) : createCommentVNode("", true)
             ], 64))
-          ], 12, _hoisted_1$6);
+          ], 14, _hoisted_1$8);
         }), 128))
       ]);
     };
   }
-};
-const ResizableHeaders = /* @__PURE__ */ _export_sfc(_sfc_main$6, [["__scopeId", "data-v-05eda446"]]);
-const _withScopeId$4 = (n) => (pushScopeId("data-v-12cb1e2f"), n = n(), popScopeId(), n);
-const _hoisted_1$5 = { class: "d-flex align-center flex-wrap ga-3 mb-4" };
-const _hoisted_2$5 = { class: "text-body-2 text-medium-emphasis flex-grow-1" };
-const _hoisted_3$5 = { class: "records-layout" };
-const _hoisted_4$5 = ["inert", "aria-hidden"];
-const _hoisted_5$5 = ["title"];
-const _hoisted_6$5 = ["title"];
-const _hoisted_7$5 = { class: "text-body-2 text-break" };
-const _hoisted_8$4 = {
+});
+const ResizableHeaders = /* @__PURE__ */ _export_sfc(_sfc_main$8, [["__scopeId", "data-v-fa463a85"]]);
+const _withScopeId$5 = (n) => (pushScopeId("data-v-c20e06de"), n = n(), popScopeId(), n);
+const _hoisted_1$7 = { class: "d-flex align-center flex-wrap ga-3 mb-4" };
+const _hoisted_2$6 = { class: "text-body-2 text-medium-emphasis flex-grow-1" };
+const _hoisted_3$6 = { class: "records-layout" };
+const _hoisted_4$6 = ["inert", "aria-hidden"];
+const _hoisted_5$6 = ["title"];
+const _hoisted_6$6 = ["title"];
+const _hoisted_7$5 = {
   key: 0,
   class: "text-caption"
 };
-const _hoisted_9$2 = /* @__PURE__ */ _withScopeId$4(() => /* @__PURE__ */ createBaseVNode("br", null, null, -1));
-const _hoisted_10$1 = {
+const _hoisted_8$3 = ["title"];
+const _hoisted_9$2 = { class: "text-truncate" };
+const _hoisted_10$2 = {
   key: 1,
   class: "decision-state d-flex flex-column align-start ga-1 py-1"
 };
@@ -561,8 +565,8 @@ const _hoisted_16 = {
   key: 1,
   class: "mt-3"
 };
-const _hoisted_17 = /* @__PURE__ */ _withScopeId$4(() => /* @__PURE__ */ createBaseVNode("p", { class: "mt-3" }, "仅处理插件数据，不清除 AstrBot 原生对话。正在回复或整理时会拒绝删除，请稍后重试。", -1));
-const _sfc_main$5 = {
+const _hoisted_17 = /* @__PURE__ */ _withScopeId$5(() => /* @__PURE__ */ createBaseVNode("p", { class: "mt-3" }, "仅处理插件数据，不清除 AstrBot 原生对话。正在回复或整理时会拒绝删除，请稍后重试。", -1));
+const _sfc_main$7 = {
   __name: "Records",
   props: { category: String, sessions: Array, refresh: Number, timezone: String },
   emits: ["changed"],
@@ -572,8 +576,8 @@ const _sfc_main$5 = {
     const defaults = { q: "", sessions: [], chat_type: "", start: "", end: "", kind: "", sender: "", component: "", reply: "", emotion: "", required: "", trigger: "", participant: "", bot_reply: "", coverage_gap: "", sort: "timestamp:desc" };
     const filters = reactive({ ...defaults, sessions: [] });
     const filtersOpen = ref(true);
-    const sessionTitles = computed(() => Object.fromEntries(props.sessions.map((item) => [item.umo, item.title])));
-    const defaultWidths = { timestamp: 180, conversation: 360, headline: 320, state: 180, actions: 112 };
+    const sessionTitles = computed(() => Object.fromEntries(props.sessions.map((item) => [item.umo, item.title !== item.umo ? item.title : item.umo.split(":").slice(2).join(":")])));
+    const defaultWidths = { timestamp: 168, conversation: 172, headline: 216, state: 132, actions: 88 };
     const widths = reactive({ ...defaultWidths });
     const tableWidth = computed(() => Object.values(widths).reduce((sum, width) => sum + width, 48));
     const page = ref(1), limit = ref(25);
@@ -592,10 +596,10 @@ const _sfc_main$5 = {
     const titles = { messages: "聊天记录", decisions: "最近反应", topics: "话题", diaries: "日记" };
     const headers = computed(() => [
       { title: "时间", key: "timestamp", width: widths.timestamp },
-      { title: "会话", key: "conversation", sortable: false, width: widths.conversation },
+      { title: "会话", key: "conversation", width: widths.conversation },
       { title: props.category === "decisions" ? "规划原因" : "内容", key: "headline", width: widths.headline },
-      { title: props.category === "messages" ? "发送者" : "状态", key: "state", sortable: false, width: widths.state },
-      { title: "操作", key: "actions", sortable: false, width: widths.actions }
+      { title: props.category === "messages" ? "发送者" : "状态", key: "state", width: widths.state },
+      { title: "操作", key: "actions", sortable: false, width: widths.actions, cellProps: { class: "record-actions" } }
     ]);
     function time(value) {
       return new Date(value * 1e3).toLocaleString("zh-CN", { timeZone: props.timezone, hour12: false });
@@ -697,7 +701,7 @@ const _sfc_main$5 = {
           ]),
           _: 1
         })) : createCommentVNode("", true),
-        createBaseVNode("div", _hoisted_1$5, [
+        createBaseVNode("div", _hoisted_1$7, [
           createVNode(_component_v_btn, {
             "prepend-icon": unref(mdiFilterVariant),
             "aria-expanded": filtersOpen.value,
@@ -709,7 +713,7 @@ const _sfc_main$5 = {
             ]),
             _: 1
           }, 8, ["prepend-icon", "aria-expanded"]),
-          createBaseVNode("div", _hoisted_2$5, "共 " + toDisplayString(total.value) + " 条 · 已选 " + toDisplayString(selected.value.length) + " 条（当前页）", 1),
+          createBaseVNode("div", _hoisted_2$6, "共 " + toDisplayString(total.value) + " 条 · 已选 " + toDisplayString(selected.value.length) + " 条（当前页）", 1),
           createVNode(_component_v_btn, {
             color: "error",
             "prepend-icon": unref(mdiDeleteOutline),
@@ -722,7 +726,7 @@ const _sfc_main$5 = {
             _: 1
           }, 8, ["prepend-icon", "disabled"])
         ]),
-        createBaseVNode("div", _hoisted_3$5, [
+        createBaseVNode("div", _hoisted_3$6, [
           createVNode(_component_v_expand_x_transition, null, {
             default: withCtx(() => [
               withDirectives(createBaseVNode("div", {
@@ -739,7 +743,7 @@ const _sfc_main$5 = {
                   onCollapse: _cache[3] || (_cache[3] = ($event) => filtersOpen.value = false),
                   onReset: _cache[4] || (_cache[4] = ($event) => Object.assign(filters, defaults, { sessions: [] }))
                 }, null, 8, ["category", "model", "sessions", "active"])
-              ], 8, _hoisted_4$5), [
+              ], 8, _hoisted_4$6), [
                 [vShow, filtersOpen.value]
               ])
             ]),
@@ -766,6 +770,7 @@ const _sfc_main$5 = {
                 "items-length": total.value,
                 loading: loading.value,
                 "items-per-page-options": [10, 25, 50, 100],
+                mobile: false,
                 "item-value": "key",
                 "show-select": "",
                 "select-strategy": "page",
@@ -784,28 +789,27 @@ const _sfc_main$5 = {
                 ]),
                 "item.conversation": withCtx(({ item }) => [
                   createBaseVNode("div", {
-                    class: "text-body-2 text-truncate",
-                    title: unref(sessionLabel)(item.conversation, sessionTitles.value[item.conversation])
-                  }, toDisplayString(unref(sessionLabel)(item.conversation, sessionTitles.value[item.conversation])), 9, _hoisted_5$5),
-                  createBaseVNode("div", {
-                    class: "text-caption text-medium-emphasis text-truncate",
-                    title: item.conversation
-                  }, toDisplayString(item.conversation), 9, _hoisted_6$5)
+                    class: "text-body-2 text-truncate session-name",
+                    title: `${unref(sessionLabel)(item.conversation, sessionTitles.value[item.conversation])}
+${item.conversation}`
+                  }, toDisplayString(sessionTitles.value[item.conversation] || item.conversation.split(":").slice(2).join(":")), 9, _hoisted_5$6)
                 ]),
-                "item.headline": withCtx(({ item }) => {
-                  var _a, _b;
-                  return [
-                    createBaseVNode("span", _hoisted_7$5, toDisplayString((_a = item.headline) == null ? void 0 : _a.slice(0, 180)) + toDisplayString(((_b = item.headline) == null ? void 0 : _b.length) > 180 ? "…" : ""), 1)
-                  ];
-                }),
+                "item.headline": withCtx(({ item }) => [
+                  createBaseVNode("div", {
+                    class: "text-body-2 text-truncate record-headline",
+                    title: item.headline
+                  }, toDisplayString(item.headline), 9, _hoisted_6$6)
+                ]),
                 "item.state": withCtx(({ item }) => {
                   var _a, _b;
                   return [
-                    __props.category === "messages" ? (openBlock(), createElementBlock("span", _hoisted_8$4, [
-                      createTextVNode(toDisplayString(item.sender_name), 1),
-                      _hoisted_9$2,
-                      createTextVNode(toDisplayString(item.direction === "out" ? "机器人回复" : item.sender_id), 1)
-                    ])) : __props.category === "decisions" ? (openBlock(), createElementBlock("div", _hoisted_10$1, [
+                    __props.category === "messages" ? (openBlock(), createElementBlock("div", _hoisted_7$5, [
+                      createBaseVNode("div", {
+                        class: "text-truncate",
+                        title: item.sender_name
+                      }, toDisplayString(item.sender_name), 9, _hoisted_8$3),
+                      createBaseVNode("div", _hoisted_9$2, toDisplayString(item.direction === "out" ? "机器人回复" : item.sender_id), 1)
+                    ])) : __props.category === "decisions" ? (openBlock(), createElementBlock("div", _hoisted_10$2, [
                       createVNode(_component_v_chip, {
                         size: "small",
                         color: item.decision_json.reply ? "primary" : void 0
@@ -860,7 +864,7 @@ const _sfc_main$5 = {
                 }),
                 createVNode(_component_v_card_text, null, {
                   default: withCtx(() => [
-                    createVNode(_sfc_main$8, { value: detailFields.value }, null, 8, ["value"])
+                    createVNode(_sfc_main$a, { value: detailFields.value }, null, 8, ["value"])
                   ]),
                   _: 1
                 }),
@@ -943,25 +947,25 @@ const _sfc_main$5 = {
     };
   }
 };
-const Records = /* @__PURE__ */ _export_sfc(_sfc_main$5, [["__scopeId", "data-v-12cb1e2f"]]);
-const _withScopeId$3 = (n) => (pushScopeId("data-v-0b84bc79"), n = n(), popScopeId(), n);
-const _hoisted_1$4 = { class: "resource-field" };
-const _hoisted_2$4 = { class: "resource-row" };
-const _hoisted_3$4 = { class: "text-subtitle-2" };
-const _hoisted_4$4 = ["aria-label"];
-const _hoisted_5$4 = { class: "text-truncate" };
-const _hoisted_6$4 = {
+const Records = /* @__PURE__ */ _export_sfc(_sfc_main$7, [["__scopeId", "data-v-c20e06de"]]);
+const _withScopeId$4 = (n) => (pushScopeId("data-v-0b84bc79"), n = n(), popScopeId(), n);
+const _hoisted_1$6 = { class: "resource-field" };
+const _hoisted_2$5 = { class: "resource-row" };
+const _hoisted_3$5 = { class: "text-subtitle-2" };
+const _hoisted_4$5 = ["aria-label"];
+const _hoisted_5$5 = { class: "text-truncate" };
+const _hoisted_6$5 = {
   key: 1,
   class: "persona-trigger"
 };
 const _hoisted_7$4 = { class: "text-body-2 text-truncate" };
-const _hoisted_8$3 = {
+const _hoisted_8$2 = {
   key: 0,
   class: "text-caption text-medium-emphasis mt-2"
 };
-const _hoisted_9$1 = /* @__PURE__ */ _withScopeId$3(() => /* @__PURE__ */ createBaseVNode("p", { class: "text-caption text-medium-emphasis mb-2" }, "人格提示词预览", -1));
-const _hoisted_10 = { class: "persona-preview" };
-const _sfc_main$4 = {
+const _hoisted_9$1 = /* @__PURE__ */ _withScopeId$4(() => /* @__PURE__ */ createBaseVNode("p", { class: "text-caption text-medium-emphasis mb-2" }, "人格提示词预览", -1));
+const _hoisted_10$1 = { class: "persona-preview" };
+const _sfc_main$6 = {
   __name: "ResourceSelector",
   props: { modelValue: String, label: String, hint: String, kind: String, items: Array },
   emits: ["update:modelValue"],
@@ -994,9 +998,9 @@ const _sfc_main$4 = {
       const _component_v_spacer = resolveComponent("v-spacer");
       const _component_v_card_actions = resolveComponent("v-card-actions");
       const _component_v_dialog = resolveComponent("v-dialog");
-      return openBlock(), createElementBlock("div", _hoisted_1$4, [
-        createBaseVNode("div", _hoisted_2$4, [
-          createBaseVNode("span", _hoisted_3$4, toDisplayString(__props.label), 1),
+      return openBlock(), createElementBlock("div", _hoisted_1$6, [
+        createBaseVNode("div", _hoisted_2$5, [
+          createBaseVNode("span", _hoisted_3$5, toDisplayString(__props.label), 1),
           __props.kind === "select_provider" ? (openBlock(), createBlock(_component_v_menu, {
             key: 0,
             modelValue: open.value,
@@ -1014,12 +1018,12 @@ const _sfc_main$4 = {
                   "aria-label": __props.label,
                   onClick: _cache[0] || (_cache[0] = ($event) => search.value = "")
                 }), [
-                  createBaseVNode("span", _hoisted_5$4, toDisplayString(((_a2 = current.value) == null ? void 0 : _a2.title) || __props.modelValue || "未选择"), 1),
+                  createBaseVNode("span", _hoisted_5$5, toDisplayString(((_a2 = current.value) == null ? void 0 : _a2.title) || __props.modelValue || "未选择"), 1),
                   createVNode(_component_v_icon, {
                     icon: unref(mdiChevronDown),
                     size: "18"
                   }, null, 8, ["icon"])
-                ], 16, _hoisted_4$4)
+                ], 16, _hoisted_4$5)
               ];
             }),
             default: withCtx(() => [
@@ -1072,7 +1076,7 @@ const _sfc_main$4 = {
               })
             ]),
             _: 1
-          }, 8, ["modelValue"])) : (openBlock(), createElementBlock("div", _hoisted_6$4, [
+          }, 8, ["modelValue"])) : (openBlock(), createElementBlock("div", _hoisted_6$5, [
             createBaseVNode("span", _hoisted_7$4, toDisplayString(((_a = current.value) == null ? void 0 : _a.title) || __props.modelValue || "未选择"), 1),
             createVNode(_component_v_btn, {
               size: "small",
@@ -1088,7 +1092,7 @@ const _sfc_main$4 = {
             }, 8, ["aria-label"])
           ]))
         ]),
-        __props.hint ? (openBlock(), createElementBlock("p", _hoisted_8$3, toDisplayString(__props.hint), 1)) : createCommentVNode("", true),
+        __props.hint ? (openBlock(), createElementBlock("p", _hoisted_8$2, toDisplayString(__props.hint), 1)) : createCommentVNode("", true),
         __props.kind === "select_persona" ? (openBlock(), createBlock(_component_v_dialog, {
           key: 1,
           modelValue: open.value,
@@ -1145,7 +1149,7 @@ const _sfc_main$4 = {
                       }),
                       createVNode(_component_v_divider, { class: "my-3" }),
                       _hoisted_9$1,
-                      createBaseVNode("pre", _hoisted_10, toDisplayString(((_a2 = __props.items.find((item) => item.value === draft.value)) == null ? void 0 : _a2.description) || "未选择人格，将使用文本或默认提示词"), 1)
+                      createBaseVNode("pre", _hoisted_10$1, toDisplayString(((_a2 = __props.items.find((item) => item.value === draft.value)) == null ? void 0 : _a2.description) || "未选择人格，将使用文本或默认提示词"), 1)
                     ];
                   }),
                   _: 1
@@ -1183,18 +1187,18 @@ const _sfc_main$4 = {
     };
   }
 };
-const ResourceSelector = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["__scopeId", "data-v-0b84bc79"]]);
-const _hoisted_1$3 = {
+const ResourceSelector = /* @__PURE__ */ _export_sfc(_sfc_main$6, [["__scopeId", "data-v-0b84bc79"]]);
+const _hoisted_1$5 = {
   key: 0,
   class: "mb-5"
 };
-const _hoisted_2$3 = { class: "d-flex align-center flex-wrap ga-2 mb-3" };
-const _hoisted_3$3 = { class: "text-subtitle-1 font-weight-bold flex-grow-1" };
-const _hoisted_4$3 = { class: "d-flex justify-space-between align-center mb-3" };
-const _hoisted_5$3 = { class: "text-caption text-medium-emphasis" };
-const _hoisted_6$3 = { class: "text-subtitle-2 mb-2" };
+const _hoisted_2$4 = { class: "d-flex align-center flex-wrap ga-2 mb-3" };
+const _hoisted_3$4 = { class: "text-subtitle-1 font-weight-bold flex-grow-1" };
+const _hoisted_4$4 = { class: "d-flex justify-space-between align-center mb-3" };
+const _hoisted_5$4 = { class: "text-caption text-medium-emphasis" };
+const _hoisted_6$4 = { class: "text-subtitle-2 mb-2" };
 const _hoisted_7$3 = { class: "text-caption text-medium-emphasis" };
-const _sfc_main$3 = {
+const _sfc_main$5 = {
   __name: "SchemaFields",
   props: { schema: Object, model: Object, choices: Object },
   setup(__props) {
@@ -1229,10 +1233,10 @@ const _sfc_main$3 = {
       const _component_v_combobox = resolveComponent("v-combobox");
       return openBlock(true), createElementBlock(Fragment, null, renderList(__props.schema, (field, key) => {
         return openBlock(), createElementBlock(Fragment, { key }, [
-          visible(field) ? (openBlock(), createElementBlock("div", _hoisted_1$3, [
+          visible(field) ? (openBlock(), createElementBlock("div", _hoisted_1$5, [
             field.type === "template_list" ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [
-              createBaseVNode("div", _hoisted_2$3, [
-                createBaseVNode("span", _hoisted_3$3, toDisplayString(field.description), 1),
+              createBaseVNode("div", _hoisted_2$4, [
+                createBaseVNode("span", _hoisted_3$4, toDisplayString(field.description), 1),
                 (openBlock(true), createElementBlock(Fragment, null, renderList(field.templates, (template, id) => {
                   return openBlock(), createBlock(_component_v_btn, {
                     key: id,
@@ -1253,7 +1257,7 @@ const _sfc_main$3 = {
                   class: "pa-4 mb-3"
                 }, {
                   default: withCtx(() => [
-                    createBaseVNode("div", _hoisted_4$3, [
+                    createBaseVNode("div", _hoisted_4$4, [
                       createBaseVNode("span", null, toDisplayString(item.name || `条目 ${index + 1}`), 1),
                       createVNode(_component_v_btn, {
                         icon: unref(mdiDeleteOutline),
@@ -1273,7 +1277,7 @@ const _sfc_main$3 = {
                   _: 2
                 }, 1024);
               }), 128)),
-              createBaseVNode("p", _hoisted_5$3, toDisplayString(field.hint), 1)
+              createBaseVNode("p", _hoisted_5$4, toDisplayString(field.hint), 1)
             ], 64)) : field.type === "bool" ? (openBlock(), createBlock(_component_v_switch, {
               key: 1,
               modelValue: __props.model[key],
@@ -1294,7 +1298,7 @@ const _sfc_main$3 = {
               "auto-grow": "",
               rows: "3"
             }, null, 8, ["modelValue", "onUpdate:modelValue", "label", "hint"])) : field.slider ? (openBlock(), createElementBlock(Fragment, { key: 3 }, [
-              createBaseVNode("div", _hoisted_6$3, toDisplayString(field.description), 1),
+              createBaseVNode("div", _hoisted_6$4, toDisplayString(field.description), 1),
               createVNode(_component_v_slider, {
                 modelValue: __props.model[key],
                 "onUpdate:modelValue": ($event) => __props.model[key] = $event,
@@ -1373,64 +1377,279 @@ const _sfc_main$3 = {
     };
   }
 };
-const _withScopeId$2 = (n) => (pushScopeId("data-v-85b87087"), n = n(), popScopeId(), n);
+const _hoisted_1$4 = { class: "text-body-2 text-medium-emphasis mb-4" };
+const _sfc_main$4 = {
+  __name: "ScopeSettings",
+  props: { schema: Object, model: Object, choices: Object },
+  setup(__props) {
+    const props = __props;
+    const fields = computed(() => Object.fromEntries(
+      (props.model.all_sessions ? ["blacklist_sessions", "blacklist_manual_sessions", "blacklist_action"] : ["sessions", "manual_sessions", "outside_action"]).map((key) => [key, props.schema[key]])
+    ));
+    return (_ctx, _cache) => {
+      const _component_v_card_title = resolveComponent("v-card-title");
+      const _component_v_card_text = resolveComponent("v-card-text");
+      const _component_v_card = resolveComponent("v-card");
+      return openBlock(), createElementBlock(Fragment, null, [
+        createVNode(_sfc_main$5, {
+          schema: { all_sessions: __props.schema.all_sessions },
+          model: __props.model,
+          choices: __props.choices
+        }, null, 8, ["schema", "model", "choices"]),
+        createVNode(_component_v_card, {
+          tag: "section",
+          "aria-label": __props.model.all_sessions ? "会话黑名单" : "会话白名单",
+          rounded: "lg"
+        }, {
+          default: withCtx(() => [
+            createVNode(_component_v_card_title, { class: "text-subtitle-1 font-weight-bold pa-4" }, {
+              default: withCtx(() => [
+                createTextVNode(toDisplayString(__props.model.all_sessions ? "会话黑名单" : "会话白名单"), 1)
+              ]),
+              _: 1
+            }),
+            createVNode(_component_v_card_text, null, {
+              default: withCtx(() => [
+                createBaseVNode("p", _hoisted_1$4, toDisplayString(__props.model.all_sessions ? "未命中黑名单的会话正常启用插件；命中时使用下方策略。" : "白名单中的会话正常启用插件；范围外使用下方策略。") + " 已匹配的插件指令及其 LLM 请求不受范围策略限制。", 1),
+                createVNode(_sfc_main$5, {
+                  schema: fields.value,
+                  model: __props.model,
+                  choices: __props.choices
+                }, null, 8, ["schema", "model", "choices"])
+              ]),
+              _: 1
+            })
+          ]),
+          _: 1
+        }, 8, ["aria-label"])
+      ], 64);
+    };
+  }
+};
+function statistics(text) {
+  const chars = Array.from(text), chinese = chars.filter((c) => /[\u4e00-\u9fff]/u.test(c)).length;
+  const emoji = chars.filter((c) => /[\u200d\u2600-\u27bf\ufe00-\ufe0f\u{1f000}-\u{1faff}]/u.test(c)).length;
+  return `${chars.length} 字 · 估计 ${Math.trunc(chinese * 0.6 + emoji * 2 + (chars.length - chinese - emoji) * 0.3)} Tokens`;
+}
+const _withScopeId$3 = (n) => (pushScopeId("data-v-50ed991a"), n = n(), popScopeId(), n);
+const _hoisted_1$3 = { class: "flex-grow-1 text-wrap" };
+const _hoisted_2$3 = /* @__PURE__ */ _withScopeId$3(() => /* @__PURE__ */ createBaseVNode("div", { class: "compare-columns compare-labels mb-3" }, [
+  /* @__PURE__ */ createBaseVNode("h3", { class: "text-subtitle-1" }, "自定义提示词"),
+  /* @__PURE__ */ createBaseVNode("h3", { class: "text-subtitle-1" }, "系统默认提示词（只读）")
+], -1));
+const _hoisted_3$3 = {
+  key: 2,
+  class: "text-body-2 text-medium-emphasis mb-3"
+};
+const _hoisted_4$3 = {
+  key: 3,
+  class: "diff-scroll",
+  role: "region",
+  "aria-label": "提示词差异对比",
+  tabindex: "0"
+};
+const _hoisted_5$3 = { class: "diff-number" };
+const _hoisted_6$3 = { class: "diff-sign" };
+const _hoisted_7$2 = {
+  key: 1,
+  class: "compare-columns"
+};
+const _hoisted_8$1 = { class: "compare-columns mt-2 text-caption text-medium-emphasis" };
+const _hoisted_9 = { "aria-label": "自定义提示词字数和Tokens估计" };
+const _hoisted_10 = { "aria-label": "默认提示词字数和Tokens估计" };
+const _sfc_main$3 = {
+  __name: "PromptCompare",
+  props: { name: String, title: String, text: String, original: String },
+  emits: ["update:text", "copy", "close"],
+  setup(__props, { emit }) {
+    const props = __props;
+    const bridge2 = inject("bridge");
+    const showDiff = ref(false), rows = ref([]), loading = ref(false), error = ref(""), identical = ref(false);
+    let generation = 0;
+    watch([showDiff, () => props.text], async ([enabled, text]) => {
+      const current = ++generation;
+      error.value = "";
+      loading.value = false;
+      if (!enabled) return;
+      loading.value = true;
+      try {
+        const result = await bridge2.apiPost("prompts/diff", { name: props.name, text });
+        if (current === generation) {
+          rows.value = result.rows;
+          identical.value = result.identical;
+        }
+      } catch (e) {
+        if (current === generation) error.value = e.message;
+      } finally {
+        if (current === generation) loading.value = false;
+      }
+    });
+    onBeforeUnmount(() => generation++);
+    return (_ctx, _cache) => {
+      const _component_v_btn = resolveComponent("v-btn");
+      const _component_v_card_title = resolveComponent("v-card-title");
+      const _component_v_progress_linear = resolveComponent("v-progress-linear");
+      const _component_v_alert = resolveComponent("v-alert");
+      const _component_v_textarea = resolveComponent("v-textarea");
+      const _component_v_card_text = resolveComponent("v-card-text");
+      const _component_v_spacer = resolveComponent("v-spacer");
+      const _component_v_card_actions = resolveComponent("v-card-actions");
+      const _component_v_card = resolveComponent("v-card");
+      return openBlock(), createBlock(_component_v_card, { class: "compare-card" }, {
+        default: withCtx(() => [
+          createVNode(_component_v_card_title, { class: "text-h6 pa-4 pl-6 d-flex align-center flex-wrap ga-3" }, {
+            default: withCtx(() => [
+              createBaseVNode("span", _hoisted_1$3, "对比默认提示词 · " + toDisplayString(__props.title), 1),
+              createVNode(_component_v_btn, {
+                size: "small",
+                "prepend-icon": unref(mdiFileCompare),
+                "aria-pressed": showDiff.value,
+                color: showDiff.value ? "primary" : void 0,
+                onClick: _cache[0] || (_cache[0] = ($event) => showDiff.value = !showDiff.value)
+              }, {
+                default: withCtx(() => [
+                  createTextVNode(toDisplayString(showDiff.value ? "返回编辑" : "显示差异"), 1)
+                ]),
+                _: 1
+              }, 8, ["prepend-icon", "aria-pressed", "color"]),
+              createVNode(_component_v_btn, {
+                icon: unref(mdiClose),
+                "aria-label": "关闭提示词对比",
+                variant: "text",
+                size: "small",
+                onClick: _cache[1] || (_cache[1] = ($event) => emit("close"))
+              }, null, 8, ["icon"])
+            ]),
+            _: 1
+          }),
+          createVNode(_component_v_card_text, { class: "compare-body" }, {
+            default: withCtx(() => [
+              _hoisted_2$3,
+              showDiff.value ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [
+                loading.value ? (openBlock(), createBlock(_component_v_progress_linear, {
+                  key: 0,
+                  indeterminate: "",
+                  color: "primary"
+                })) : createCommentVNode("", true),
+                error.value ? (openBlock(), createBlock(_component_v_alert, {
+                  key: 1,
+                  type: "error",
+                  variant: "tonal",
+                  class: "mb-3"
+                }, {
+                  default: withCtx(() => [
+                    createTextVNode(toDisplayString(error.value), 1)
+                  ]),
+                  _: 1
+                })) : createCommentVNode("", true),
+                !loading.value && !error.value && identical.value ? (openBlock(), createElementBlock("p", _hoisted_3$3, "与默认内容相同。")) : createCommentVNode("", true),
+                !loading.value && !error.value ? (openBlock(), createElementBlock("div", _hoisted_4$3, [
+                  (openBlock(true), createElementBlock(Fragment, null, renderList(rows.value, (row, index) => {
+                    return openBlock(), createElementBlock("div", {
+                      key: index,
+                      class: "compare-columns diff-row"
+                    }, [
+                      (openBlock(), createElementBlock(Fragment, null, renderList(["left", "right"], (side) => {
+                        var _a, _b;
+                        return createBaseVNode("div", {
+                          key: side,
+                          class: normalizeClass(["diff-cell", { "diff-empty": !row[side], "diff-add": side === "left" && row.kind !== "equal" && row.left, "diff-remove": side === "right" && row.kind !== "equal" && row.right }])
+                        }, [
+                          createBaseVNode("span", _hoisted_5$3, toDisplayString((_a = row[side]) == null ? void 0 : _a.number), 1),
+                          createBaseVNode("span", _hoisted_6$3, toDisplayString(row.kind === "equal" || !row[side] ? " " : side === "left" ? "+" : "−"), 1),
+                          createBaseVNode("code", null, [
+                            (openBlock(true), createElementBlock(Fragment, null, renderList((_b = row[side]) == null ? void 0 : _b.segments, (part, partIndex) => {
+                              return openBlock(), createElementBlock("span", {
+                                key: partIndex,
+                                class: normalizeClass({ "diff-change": part.changed })
+                              }, toDisplayString(part.text), 3);
+                            }), 128))
+                          ])
+                        ], 2);
+                      }), 64))
+                    ]);
+                  }), 128))
+                ])) : createCommentVNode("", true)
+              ], 64)) : (openBlock(), createElementBlock("div", _hoisted_7$2, [
+                createVNode(_component_v_textarea, {
+                  "model-value": __props.text,
+                  label: "自定义提示词正文",
+                  rows: "16",
+                  "no-resize": "",
+                  "hide-details": "",
+                  "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => emit("update:text", $event))
+                }, null, 8, ["model-value"]),
+                createVNode(_component_v_textarea, {
+                  "model-value": __props.original,
+                  label: "系统默认提示词正文",
+                  rows: "16",
+                  "no-resize": "",
+                  readonly: "",
+                  "hide-details": ""
+                }, null, 8, ["model-value"])
+              ])),
+              createBaseVNode("div", _hoisted_8$1, [
+                createBaseVNode("p", _hoisted_9, toDisplayString(unref(statistics)(__props.text)), 1),
+                createBaseVNode("p", _hoisted_10, toDisplayString(unref(statistics)(__props.original)), 1)
+              ])
+            ]),
+            _: 1
+          }),
+          createVNode(_component_v_card_actions, null, {
+            default: withCtx(() => [
+              createVNode(_component_v_spacer),
+              createVNode(_component_v_btn, {
+                color: "primary",
+                onClick: _cache[3] || (_cache[3] = ($event) => {
+                  showDiff.value = false;
+                  emit("copy");
+                })
+              }, {
+                default: withCtx(() => [
+                  createTextVNode("复制默认到输入框")
+                ]),
+                _: 1
+              }),
+              createVNode(_component_v_btn, {
+                onClick: _cache[4] || (_cache[4] = ($event) => emit("close"))
+              }, {
+                default: withCtx(() => [
+                  createTextVNode("关闭")
+                ]),
+                _: 1
+              })
+            ]),
+            _: 1
+          })
+        ]),
+        _: 1
+      });
+    };
+  }
+};
+const PromptCompare = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["__scopeId", "data-v-50ed991a"]]);
+const _withScopeId$2 = (n) => (pushScopeId("data-v-aade2360"), n = n(), popScopeId(), n);
 const _hoisted_1$2 = /* @__PURE__ */ _withScopeId$2(() => /* @__PURE__ */ createBaseVNode("p", { class: "text-body-2 text-medium-emphasis mb-5" }, "主人格仍由 AstrBot 管理。以下四层分别控制规划、表达和聊天场景；选择人格时优先使用其正文，未选择人格且文本留空时自动读取内置默认 TXT。", -1));
 const _hoisted_2$2 = { class: "prompt-grid" };
-const _hoisted_3$2 = { class: "text-caption text-medium-emphasis my-3" };
+const _hoisted_3$2 = { class: "text-caption text-medium-emphasis text-truncate my-3" };
 const _hoisted_4$2 = ["aria-label"];
-const _hoisted_5$2 = { class: "d-flex flex-wrap ga-2 mt-4" };
-const _hoisted_6$2 = /* @__PURE__ */ _withScopeId$2(() => /* @__PURE__ */ createBaseVNode("p", { class: "text-caption text-medium-emphasis mt-4" }, "Token 使用 AstrBot 的字符权重估算，不调用模型，不代表提供商实际计费。未自定义时直接显示默认正文，可在输入框中修改；点击“使用默认”后保存即可恢复，单纯浏览不会将默认内容写回配置。", -1));
-const _hoisted_7$2 = {
-  key: 0,
-  class: "text-medium-emphasis"
-};
-const _hoisted_8$2 = {
-  key: 1,
-  class: "prompt-text diff"
-};
-const _hoisted_9 = {
-  key: 3,
-  class: "prompt-text"
-};
+const _hoisted_5$2 = { class: "d-flex flex-wrap ga-2 prompt-actions" };
+const _hoisted_6$2 = /* @__PURE__ */ _withScopeId$2(() => /* @__PURE__ */ createBaseVNode("p", { class: "text-caption text-medium-emphasis mt-4" }, "Tokens 使用 AstrBot 的字符权重估计，不调用模型，不代表提供商实际计费。未自定义时直接显示默认正文，可在输入框中修改；点击“使用默认”后保存即可恢复，单纯浏览不会将默认内容写回配置。", -1));
 const _sfc_main$2 = {
   __name: "PromptEditor",
   props: { model: Object, schema: Object, defaults: Object, personas: Array },
   setup(__props) {
     const props = __props;
-    const bridge2 = inject("bridge");
     const names = [["behavior", "行为规划"], ["expression", "表达风格"], ["group", "群聊"], ["private", "私聊"]];
-    const viewer = ref(null), lines = ref([]), loading = ref(false), error = ref("");
+    const viewer = ref(null);
     const drafts = ref({});
     watch(() => props.model, (model) => {
       drafts.value = Object.fromEntries(names.map(([name]) => [name, model[name].trim() ? model[name] : props.defaults[name]]));
     }, { immediate: true });
-    function statistics(text) {
-      const chars = Array.from(text), chinese = chars.filter((c) => /[\u4e00-\u9fff]/u.test(c)).length;
-      const emoji = chars.filter((c) => /[\u200d\u2600-\u27bf\ufe00-\ufe0f\u{1f000}-\u{1faff}]/u.test(c)).length;
-      return `${chars.length} 字 · 估算 ${Math.trunc(chinese * 0.6 + emoji * 2 + (chars.length - chinese - emoji) * 0.3)} Token`;
-    }
     function reset(name) {
       drafts.value[name] = props.defaults[name];
       props.model[name] = "";
       props.model[`${name}_persona`] = "";
-    }
-    async function view(name, mode) {
-      viewer.value = { name, mode };
-      lines.value = [];
-      error.value = "";
-      if (mode !== "diff") return;
-      loading.value = true;
-      try {
-        lines.value = (await bridge2.apiPost("prompts/diff", { name, text: props.model[name] })).lines;
-      } catch (e) {
-        error.value = e.message;
-      } finally {
-        loading.value = false;
-      }
-    }
-    function lineClass(line) {
-      if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) return "diff-header";
-      return line.startsWith("+") ? "diff-add" : line.startsWith("-") ? "diff-remove" : "";
     }
     return (_ctx, _cache) => {
       const _component_v_card_title = resolveComponent("v-card-title");
@@ -1438,10 +1657,6 @@ const _sfc_main$2 = {
       const _component_v_btn = resolveComponent("v-btn");
       const _component_v_card_text = resolveComponent("v-card-text");
       const _component_v_card = resolveComponent("v-card");
-      const _component_v_progress_linear = resolveComponent("v-progress-linear");
-      const _component_v_alert = resolveComponent("v-alert");
-      const _component_v_spacer = resolveComponent("v-spacer");
-      const _component_v_card_actions = resolveComponent("v-card-actions");
       const _component_v_dialog = resolveComponent("v-dialog");
       return openBlock(), createElementBlock(Fragment, null, [
         _hoisted_1$2,
@@ -1451,6 +1666,7 @@ const _sfc_main$2 = {
               key: name,
               tag: "section",
               "aria-label": `${title}提示词`,
+              class: "prompt-card",
               rounded: "xl"
             }, {
               default: withCtx(() => [
@@ -1463,7 +1679,7 @@ const _sfc_main$2 = {
                   ]),
                   _: 2
                 }, 1024),
-                createVNode(_component_v_card_text, null, {
+                createVNode(_component_v_card_text, { class: "prompt-body" }, {
                   default: withCtx(() => [
                     createVNode(ResourceSelector, {
                       modelValue: __props.model[`${name}_persona`],
@@ -1477,34 +1693,23 @@ const _sfc_main$2 = {
                       modelValue: drafts.value[name],
                       "onUpdate:modelValue": [($event) => drafts.value[name] = $event, ($event) => __props.model[name] = $event],
                       label: __props.schema[name].description,
-                      "auto-grow": "",
-                      rows: "8",
-                      "max-rows": "18",
+                      rows: "12",
+                      "no-resize": "",
                       "hide-details": "",
                       onBlur: ($event) => !drafts.value[name].trim() && (drafts.value[name] = __props.defaults[name], __props.model[name] = "")
                     }, null, 8, ["modelValue", "onUpdate:modelValue", "label", "onBlur"]),
                     createBaseVNode("p", {
                       class: "text-caption text-medium-emphasis mt-1",
-                      "aria-label": `${title}字数和Token估算`
-                    }, toDisplayString(statistics(drafts.value[name])), 9, _hoisted_4$2),
+                      "aria-label": `${title}字数和Tokens估计`
+                    }, toDisplayString(unref(statistics)(drafts.value[name])), 9, _hoisted_4$2),
                     createBaseVNode("div", _hoisted_5$2, [
                       createVNode(_component_v_btn, {
                         size: "small",
-                        "prepend-icon": unref(mdiFileDocumentOutline),
-                        onClick: ($event) => view(name, "default")
-                      }, {
-                        default: withCtx(() => [
-                          createTextVNode("查看默认")
-                        ]),
-                        _: 2
-                      }, 1032, ["prepend-icon", "onClick"]),
-                      createVNode(_component_v_btn, {
-                        size: "small",
                         "prepend-icon": unref(mdiFileCompare),
-                        onClick: ($event) => view(name, "diff")
+                        onClick: ($event) => viewer.value = name
                       }, {
                         default: withCtx(() => [
-                          createTextVNode("查看差异")
+                          createTextVNode("对比默认")
                         ]),
                         _: 2
                       }, 1032, ["prepend-icon", "onClick"]),
@@ -1531,92 +1736,27 @@ const _sfc_main$2 = {
         _hoisted_6$2,
         createVNode(_component_v_dialog, {
           "model-value": !!viewer.value,
-          "max-width": "1000",
+          "max-width": "1440",
           scrollable: "",
-          "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => !$event && (viewer.value = null))
+          "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => !$event && (viewer.value = null))
         }, {
           default: withCtx(() => [
-            createVNode(_component_v_card, null, {
-              default: withCtx(() => [
-                createVNode(_component_v_card_title, { class: "text-h6 pa-5" }, {
-                  default: withCtx(() => {
-                    var _a, _b;
-                    return [
-                      createTextVNode(toDisplayString(((_a = viewer.value) == null ? void 0 : _a.mode) === "diff" ? "与默认提示词的差异" : "内置默认提示词") + " · " + toDisplayString((_b = names.find((item) => {
-                        var _a2;
-                        return item[0] === ((_a2 = viewer.value) == null ? void 0 : _a2.name);
-                      })) == null ? void 0 : _b[1]), 1)
-                    ];
-                  }),
-                  _: 1
-                }),
-                createVNode(_component_v_card_text, null, {
-                  default: withCtx(() => {
-                    var _a;
-                    return [
-                      loading.value ? (openBlock(), createBlock(_component_v_progress_linear, {
-                        key: 0,
-                        indeterminate: "",
-                        color: "primary"
-                      })) : createCommentVNode("", true),
-                      error.value ? (openBlock(), createBlock(_component_v_alert, {
-                        key: 1,
-                        type: "error",
-                        variant: "tonal"
-                      }, {
-                        default: withCtx(() => [
-                          createTextVNode(toDisplayString(error.value), 1)
-                        ]),
-                        _: 1
-                      })) : createCommentVNode("", true),
-                      ((_a = viewer.value) == null ? void 0 : _a.mode) === "diff" ? (openBlock(), createElementBlock(Fragment, { key: 2 }, [
-                        !loading.value && !error.value && !lines.value.length ? (openBlock(), createElementBlock("p", _hoisted_7$2, "与默认内容相同；空白文本会自动使用默认提示词。")) : (openBlock(), createElementBlock("pre", _hoisted_8$2, [
-                          (openBlock(true), createElementBlock(Fragment, null, renderList(lines.value, (line, index) => {
-                            return openBlock(), createElementBlock("span", {
-                              key: index,
-                              class: normalizeClass(lineClass(line))
-                            }, toDisplayString(line), 3);
-                          }), 128))
-                        ]))
-                      ], 64)) : viewer.value ? (openBlock(), createElementBlock("pre", _hoisted_9, toDisplayString(__props.defaults[viewer.value.name]), 1)) : createCommentVNode("", true)
-                    ];
-                  }),
-                  _: 1
-                }),
-                createVNode(_component_v_card_actions, null, {
-                  default: withCtx(() => {
-                    var _a;
-                    return [
-                      createVNode(_component_v_spacer),
-                      ((_a = viewer.value) == null ? void 0 : _a.mode) === "default" ? (openBlock(), createBlock(_component_v_btn, {
-                        key: 0,
-                        color: "primary",
-                        onClick: _cache[0] || (_cache[0] = ($event) => {
-                          drafts.value[viewer.value.name] = __props.defaults[viewer.value.name];
-                          __props.model[viewer.value.name] = __props.defaults[viewer.value.name];
-                          viewer.value = null;
-                        })
-                      }, {
-                        default: withCtx(() => [
-                          createTextVNode("复制到输入框")
-                        ]),
-                        _: 1
-                      })) : createCommentVNode("", true),
-                      createVNode(_component_v_btn, {
-                        onClick: _cache[1] || (_cache[1] = ($event) => viewer.value = null)
-                      }, {
-                        default: withCtx(() => [
-                          createTextVNode("关闭")
-                        ]),
-                        _: 1
-                      })
-                    ];
-                  }),
-                  _: 1
-                })
-              ]),
-              _: 1
-            })
+            viewer.value ? (openBlock(), createBlock(PromptCompare, {
+              key: 0,
+              name: viewer.value,
+              title: names.find((item) => item[0] === viewer.value)[1],
+              text: drafts.value[viewer.value],
+              original: __props.defaults[viewer.value],
+              "onUpdate:text": _cache[0] || (_cache[0] = ($event) => {
+                drafts.value[viewer.value] = $event;
+                __props.model[viewer.value] = $event;
+              }),
+              onCopy: _cache[1] || (_cache[1] = ($event) => {
+                drafts.value[viewer.value] = __props.defaults[viewer.value];
+                __props.model[viewer.value] = __props.defaults[viewer.value];
+              }),
+              onClose: _cache[2] || (_cache[2] = ($event) => viewer.value = null)
+            }, null, 8, ["name", "title", "text", "original"])) : createCommentVNode("", true)
           ]),
           _: 1
         }, 8, ["model-value"])
@@ -1624,8 +1764,8 @@ const _sfc_main$2 = {
     };
   }
 };
-const PromptEditor = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["__scopeId", "data-v-85b87087"]]);
-const _withScopeId$1 = (n) => (pushScopeId("data-v-13222b49"), n = n(), popScopeId(), n);
+const PromptEditor = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["__scopeId", "data-v-aade2360"]]);
+const _withScopeId$1 = (n) => (pushScopeId("data-v-c5e96c54"), n = n(), popScopeId(), n);
 const _hoisted_1$1 = { class: "d-flex align-center flex-wrap ga-3 mb-4" };
 const _hoisted_2$1 = { class: "text-body-2 flex-grow-1" };
 const _hoisted_3$1 = {
@@ -1636,13 +1776,9 @@ const _hoisted_4$1 = {
   class: "mt-2",
   "aria-label": "设置分区"
 };
-const _hoisted_5$1 = { class: "d-flex align-center justify-end ga-3 mb-3" };
-const _hoisted_6$1 = {
-  key: 0,
-  class: "text-caption text-medium-emphasis"
-};
-const _hoisted_7$1 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createBaseVNode("p", { class: "mb-4" }, "清除全部 Humanization 会话的聊天记录、话题、日记、最近反应、辅助模型进度与计数，并为对应主模型开启空白对话。包含当前未启用的历史会话，删除后无法撤销。", -1));
-const _hoisted_8$1 = { class: "mb-4" };
+const _hoisted_5$1 = { class: "settings-grid" };
+const _hoisted_6$1 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createBaseVNode("p", { class: "mb-4" }, "清除全部 Humanization 会话的聊天记录、话题、日记、最近反应、辅助模型进度与计数，并为对应主模型开启空白对话。包含当前未启用的历史会话，删除后无法撤销。", -1));
+const _hoisted_7$1 = { class: "mb-4" };
 const _sfc_main$1 = {
   __name: "Settings",
   props: { promptsOnly: Boolean },
@@ -1654,28 +1790,15 @@ const _sfc_main$1 = {
     const dirty = computed(() => model.value && JSON.stringify(model.value) !== baseline.value);
     const resetDialog = ref(false), confirmation = ref(""), resetting = ref(false), resetError = ref("");
     const busy = computed(() => saving.value || resetting.value);
-    const content = ref(null), navOpen = ref(true), manualSingle = ref(false), contentWidth = ref(0), active = ref("scope");
+    const content = ref(null), navOpen = ref(true), active = ref("scope");
     const sections = computed(() => {
       var _a;
       return Object.entries(((_a = data.value) == null ? void 0 : _a.schema) || {}).filter(([key]) => key !== "prompts");
     });
-    const canDouble = computed(() => contentWidth.value >= 1e3);
-    const double = computed(() => canDouble.value && !manualSingle.value);
     const navTitles = { scope: "会话范围", recorder: "聊天感知", controller: "行为规划", proactive: "主动发言", management: "管理指令", logging: "日志设置", danger: "危险操作" };
     const navIcons = { scope: mdiAccountGroupOutline, recorder: mdiEyeOutline, controller: mdiHeadCogOutline, proactive: mdiMessageTextOutline, management: mdiShieldAccountOutline, logging: mdiTextBoxOutline, danger: mdiDeleteAlertOutline };
-    let scrollFrame = 0, preferredSection = "";
-    const observer = new ResizeObserver((entries) => {
-      contentWidth.value = entries[0].contentRect.width;
-      trackSection();
-    });
-    watch(content, (element) => {
-      observer.disconnect();
-      if (element) {
-        observer.observe(element);
-        trackSection();
-      }
-    });
-    watch(double, trackSection, { flush: "post" });
+    let scrollFrame = 0;
+    watch(content, trackSection, { flush: "post" });
     function trackSection() {
       if (scrollFrame) return;
       scrollFrame = requestAnimationFrame(() => {
@@ -1688,13 +1811,10 @@ const _sfc_main$1 = {
           return;
         }
         const passed = blocks.filter((block) => block.top <= 80);
-        const rowTop = passed.length ? Math.max(...passed.map((block) => block.top)) : blocks[0].top;
-        const row = blocks.filter((block) => Math.abs(block.top - rowTop) < 2);
-        active.value = (row.find((block) => block.key === preferredSection) || row.find((block) => block.key === active.value) || row[0]).key;
+        active.value = (passed.at(-1) || blocks[0]).key;
       });
     }
     onBeforeUnmount(() => {
-      observer.disconnect();
       cancelAnimationFrame(scrollFrame);
       window.removeEventListener("scroll", trackSection);
       window.removeEventListener("resize", trackSection);
@@ -1702,7 +1822,6 @@ const _sfc_main$1 = {
     function jump(key) {
       var _a;
       active.value = key;
-      preferredSection = key;
       (_a = content.value.querySelector(`#setting-${key}`)) == null ? void 0 : _a.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
       trackSection();
     }
@@ -1901,22 +2020,6 @@ const _sfc_main$1 = {
               class: "settings-content"
             }, [
               createBaseVNode("div", _hoisted_5$1, [
-                !canDouble.value ? (openBlock(), createElementBlock("span", _hoisted_6$1, "当前宽度自动使用单列")) : createCommentVNode("", true),
-                createVNode(_component_v_btn, {
-                  size: "small",
-                  "prepend-icon": double.value ? unref(mdiViewStreamOutline) : unref(mdiViewColumnOutline),
-                  disabled: !canDouble.value,
-                  onClick: _cache[3] || (_cache[3] = ($event) => manualSingle.value = !manualSingle.value)
-                }, {
-                  default: withCtx(() => [
-                    createTextVNode(toDisplayString(double.value ? "切换为单列" : "切换为双列"), 1)
-                  ]),
-                  _: 1
-                }, 8, ["prepend-icon", "disabled"])
-              ]),
-              createBaseVNode("div", {
-                class: normalizeClass(["settings-grid", { "settings-grid--double": double.value }])
-              }, [
                 (openBlock(true), createElementBlock(Fragment, null, renderList(sections.value, ([key, section]) => {
                   return openBlock(), createBlock(_component_v_card, {
                     key,
@@ -1937,11 +2040,17 @@ const _sfc_main$1 = {
                       }, 1024),
                       createVNode(_component_v_card_text, null, {
                         default: withCtx(() => [
-                          createVNode(_sfc_main$3, {
+                          key === "scope" ? (openBlock(), createBlock(_sfc_main$4, {
+                            key: 0,
                             schema: section.items,
                             model: model.value[key],
                             choices: data.value.choices
-                          }, null, 8, ["schema", "model", "choices"])
+                          }, null, 8, ["schema", "model", "choices"])) : (openBlock(), createBlock(_sfc_main$5, {
+                            key: 1,
+                            schema: section.items,
+                            model: model.value[key],
+                            choices: data.value.choices
+                          }, null, 8, ["schema", "model", "choices"]))
                         ]),
                         _: 2
                       }, 1024)
@@ -1949,7 +2058,7 @@ const _sfc_main$1 = {
                     _: 2
                   }, 1032, ["id", "aria-label"]);
                 }), 128))
-              ], 2),
+              ]),
               createVNode(_component_v_card, {
                 id: "setting-danger",
                 tag: "section",
@@ -1972,13 +2081,13 @@ const _sfc_main$1 = {
                   }),
                   createVNode(_component_v_card_text, null, {
                     default: withCtx(() => [
-                      _hoisted_7$1,
+                      _hoisted_6$1,
                       createVNode(_component_v_btn, {
                         color: "error",
                         variant: "flat",
                         "prepend-icon": unref(mdiDeleteAlertOutline),
                         disabled: busy.value || loading.value,
-                        onClick: _cache[4] || (_cache[4] = ($event) => {
+                        onClick: _cache[3] || (_cache[3] = ($event) => {
                           confirmation.value = "";
                           resetError.value = "";
                           resetDialog.value = true;
@@ -2000,7 +2109,7 @@ const _sfc_main$1 = {
         ], 64)) : createCommentVNode("", true),
         createVNode(_component_v_dialog, {
           modelValue: confirm.value,
-          "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => confirm.value = $event),
+          "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => confirm.value = $event),
           "max-width": "540",
           persistent: saving.value
         }, {
@@ -2024,7 +2133,7 @@ const _sfc_main$1 = {
                     createVNode(_component_v_spacer),
                     createVNode(_component_v_btn, {
                       disabled: saving.value,
-                      onClick: _cache[5] || (_cache[5] = ($event) => confirm.value = false)
+                      onClick: _cache[4] || (_cache[4] = ($event) => confirm.value = false)
                     }, {
                       default: withCtx(() => [
                         createTextVNode("取消")
@@ -2052,7 +2161,7 @@ const _sfc_main$1 = {
         }, 8, ["modelValue", "persistent"]),
         createVNode(_component_v_dialog, {
           modelValue: resetDialog.value,
-          "onUpdate:modelValue": _cache[9] || (_cache[9] = ($event) => resetDialog.value = $event),
+          "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => resetDialog.value = $event),
           "max-width": "600",
           persistent: resetting.value
         }, {
@@ -2079,14 +2188,14 @@ const _sfc_main$1 = {
                         ]),
                         _: 1
                       }),
-                      createBaseVNode("p", _hoisted_8$1, [
+                      createBaseVNode("p", _hoisted_7$1, [
                         createTextVNode("请输入 "),
                         createBaseVNode("strong", null, toDisplayString((_a = data.value) == null ? void 0 : _a.reset_confirmation), 1),
                         createTextVNode(" 确认清除；不会保存当前未提交的设置。")
                       ]),
                       createVNode(_component_v_text_field, {
                         modelValue: confirmation.value,
-                        "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => confirmation.value = $event),
+                        "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => confirmation.value = $event),
                         label: "确认信息",
                         autocomplete: "off",
                         disabled: resetting.value,
@@ -2115,7 +2224,7 @@ const _sfc_main$1 = {
                       createVNode(_component_v_btn, {
                         variant: "text",
                         disabled: resetting.value,
-                        onClick: _cache[8] || (_cache[8] = ($event) => resetDialog.value = false)
+                        onClick: _cache[7] || (_cache[7] = ($event) => resetDialog.value = false)
                       }, {
                         default: withCtx(() => [
                           createTextVNode("取消")
@@ -2165,7 +2274,7 @@ const _sfc_main$1 = {
     };
   }
 };
-const Settings = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-13222b49"]]);
+const Settings = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-c5e96c54"]]);
 const _withScopeId = (n) => (pushScopeId("data-v-b9e4d79a"), n = n(), popScopeId(), n);
 const _hoisted_1 = { class: "d-flex align-center flex-wrap ga-3 mb-4" };
 const _hoisted_2 = /* @__PURE__ */ _withScopeId(() => /* @__PURE__ */ createBaseVNode("div", { class: "flex-grow-1" }, [
@@ -2317,7 +2426,7 @@ const _sfc_main = {
                     "hide-details": "",
                     class: "mb-5"
                   }, null, 8, ["modelValue", "items"])) : createCommentVNode("", true),
-                  tab.value === "overview" ? (openBlock(), createBlock(_sfc_main$9, {
+                  tab.value === "overview" ? (openBlock(), createBlock(_sfc_main$b, {
                     key: 2,
                     stats: overview.value.stats,
                     onBrowse: navigate

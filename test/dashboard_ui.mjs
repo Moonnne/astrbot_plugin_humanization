@@ -13,12 +13,17 @@ const sdk = await readFile(join(host, 'astrbot/dashboard/plugin_page_bridge.js')
 const schema = JSON.parse(await readFile(join(root, '_conf_schema.json'), 'utf8'));
 const config = Object.fromEntries(Object.entries(schema).map(([key, section]) => [key,
   Object.fromEntries(Object.entries(section.items).map(([key, field]) => [key, field.default]))]));
+for (const key of ['sessions','blacklist_sessions']) {
+  schema.scope.items[key].options = ['onebot:GroupMessage:123','onebot:FriendMessage:456'];
+  schema.scope.items[key].labels = ['测试群','测试私聊'];
+}
 const scope = JSON.stringify(['onebot', '999', 'group', '123']);
 const rows = [1, 2].map(id => ({ id, key:JSON.stringify([scope,id]), scope,
   timestamp:1792346400, conversation:'onebot:GroupMessage:123', headline:`天气很好 ${id}`,
   text:`天气很好 ${id}`, sender_name:'测试用户', sender_id:'42', direction:'in',
   segments:[{type:'text',text:'<script>window.UNSAFE = true</script>'},{type:'poke',target_id:'999'}],
 }));
+rows[1].headline = '这是一段需要省略显示但悬停时应完整保留的内容。'.repeat(16);
 const records = {
   messages:rows,
   decisions:rows.map((row,index)=>({...row, headline:'根据当前话题简短回应', outcome:index ? 'processed' : 'unconfirmed', decision_json:{reply:true,emotion:{primary:'SELF_CONSCIOUS',intensity:1},plan:{guidance:'简短接话'}}})),
@@ -45,7 +50,11 @@ window.addEventListener('message', event => {
   if(m.endpoint==='records') {const items=records[m.params.category].filter(r=>!(window.deleted[m.params.category]||[]).includes(r.key));data={items,total:items.length};}
   if(m.endpoint==='records/delete') { (window.deleted[m.body.category] ||= []).push(...m.body.keys); data={deleted:m.body.keys.length}; }
   if(m.endpoint==='settings') data=settings;
-  if(m.endpoint==='prompts/diff') data={lines:!m.body.text.trim() || m.body.text === settings.prompt_defaults[m.body.name] ? [] : ['--- 默认提示词','+++ 自定义草稿','-'+settings.prompt_defaults[m.body.name],...m.body.text.split('\\n').map(line=>'+'+line)]};
+  if(m.endpoint==='prompts/diff') {
+    const original=settings.prompt_defaults[m.body.name], draft=m.body.text.trim() ? m.body.text : original;
+    const a=original.split(String.fromCharCode(10)), b=draft.split(String.fromCharCode(10));
+    data={identical:original===draft,rows:Array.from({length:Math.max(a.length,b.length)},(_,i)=>({kind:a[i]===b[i] ? 'equal' : 'replace',left:i<b.length ? {number:i+1,text:b[i],segments:[{text:b[i],changed:a[i]!==b[i]}]} : null,right:i<a.length ? {number:i+1,text:a[i],segments:[{text:a[i],changed:a[i]!==b[i]}]} : null}))};
+  }
   if(m.endpoint==='settings/save') {
     if(window.failSave) {frame.contentWindow.postMessage({channel:'astrbot-plugin-page',kind:'response',requestId:m.requestId,ok:false,error:'模拟保存失败'},'*');return;}
     window.saved=m.body; settings.config=m.body.config; settings.revision=String(Date.now()); data={saved:true,reloaded:true};
@@ -100,17 +109,54 @@ try {
   await view.getByRole('tab',{name:'聊天',exact:true}).click();
   await expect(view.getByText('天气很好 1',{exact:true})).toBeVisible();
   await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeVisible();
+  if (process.argv.includes('--table-sorting')) {
+    for (const category of ['聊天','最近反应','话题','日记']) {
+      await view.getByRole('tab',{name:category,exact:true}).click();
+      for (const [title,key] of [[category === '最近反应' ? '规划原因' : '内容','headline'],['时间','timestamp'],['会话','conversation'],[category === '聊天' ? '发送者' : '状态','state']]) {
+        const header = view.locator('thead th').filter({hasText:title});
+        await header.getByRole('button',{name:new RegExp(title)}).click();
+        await expect.poll(()=>page.evaluate(()=>window.calls.filter(call=>call.endpoint === 'records').at(-1)?.params.sort)).toBe(key);
+        await expect.poll(()=>page.evaluate(()=>window.calls.filter(call=>call.endpoint === 'records').at(-1)?.params.order)).toBe('asc');
+        await expect(header).toHaveAttribute('aria-sort','ascending');
+        await header.click();
+        await expect.poll(()=>page.evaluate(()=>window.calls.filter(call=>call.endpoint === 'records').at(-1)?.params.order)).toBe('desc');
+        await expect(header).toHaveAttribute('aria-sort','descending');
+      }
+    }
+    await view.getByRole('tab',{name:'聊天',exact:true}).click();
+    console.log('Sortable headers switch the query column and both directions.');
+  }
   if (process.argv.includes('--workspace-upgrade')) {
-    await expect(view.getByText('onebot · 群聊 · 测试群',{exact:true}).first()).toBeVisible();
+    await expect(view.locator('.session-name').first()).toHaveText('测试群');
+    await expect(view.locator('.session-name').first()).toHaveAttribute('title','onebot · 群聊 · 测试群\nonebot:GroupMessage:123');
+    const wrapper = view.locator('.records-table .v-table__wrapper');
+    expect(await wrapper.evaluate(el=>el.scrollWidth <= el.clientWidth + 1)).toBeTruthy();
+    expect(await view.locator('.record-headline').last().evaluate(el=>el.scrollWidth > el.clientWidth)).toBeTruthy();
+    await expect(view.locator('.record-headline').last()).toHaveAttribute('title',rows[1].headline);
     const separator = view.getByRole('separator',{name:'调整会话列宽',exact:true});
     const box = await separator.boundingBox();
+    const initialWidth = await separator.evaluate(el=>el.closest('th').getBoundingClientRect().width);
     const calls = await page.evaluate(()=>window.calls.filter(call=>call.endpoint === 'records').length);
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down(); await page.mouse.move(box.x + box.width / 2 + 80,box.y + box.height / 2,{steps:8}); await page.mouse.up();
-    await expect(separator).toHaveAttribute('aria-valuenow','440');
-    await separator.press('ArrowLeft'); await expect(separator).toHaveAttribute('aria-valuenow','424');
-    await separator.dblclick(); await expect(separator).toHaveAttribute('aria-valuenow','360');
+    await expect(separator).toHaveAttribute('aria-valuenow',String(Math.round(initialWidth+80)));
+    await separator.press('ArrowLeft'); await expect(separator).toHaveAttribute('aria-valuenow',String(Math.round(initialWidth+80)-16));
+    await separator.dblclick(); await expect(separator).toHaveAttribute('aria-valuenow','172');
     expect(await page.evaluate(()=>window.calls.filter(call=>call.endpoint === 'records').length)).toBe(calls);
+    const edge = await separator.boundingBox();
+    await page.mouse.move(edge.x+4,edge.y+4); await page.mouse.down();
+    await page.mouse.move(edge.x+504,edge.y+4,{steps:8}); await page.mouse.up();
+    expect(await wrapper.evaluate(el=>el.scrollWidth > el.clientWidth)).toBeTruthy();
+    const actions = view.locator('tbody td.record-actions').first();
+    await expect(actions).toHaveCSS('position','sticky');
+    const right = (await actions.boundingBox()).x + (await actions.boundingBox()).width;
+    const visibleRight = (await wrapper.boundingBox()).x + (await wrapper.boundingBox()).width;
+    expect(Math.abs(right-visibleRight)).toBeLessThan(3);
+    await wrapper.evaluate(el=>el.scrollLeft=el.scrollWidth);
+    expect(Math.abs((await actions.boundingBox()).x+(await actions.boundingBox()).width-visibleRight)).toBeLessThan(3);
+    await separator.dblclick();
+    await wrapper.evaluate(el=>el.scrollLeft=0);
+    expect(await view.locator('tbody td').first().evaluate(el=>parseFloat(getComputedStyle(el).paddingTop))).toBeGreaterThanOrEqual(12);
   }
   if (process.argv.includes('--filter-regression')) {
     await page.emulateMedia({reducedMotion:'no-preference'});
@@ -158,7 +204,7 @@ try {
   await view.getByRole('button',{name:'隐藏筛选',exact:true}).click();
   await expect(view.getByRole('listbox')).toBeHidden();
   await view.getByRole('button',{name:'显示筛选',exact:true}).click();
-  await expect(view.getByText('onebot · 群聊 · 测试群',{exact:true}).first()).toBeVisible();
+  await expect(view.locator('.session-name').first()).toHaveText('测试群');
   await page.screenshot({path:join(output,'filters.png'),animations:'disabled'});
   await view.getByRole('button',{name:'群聊',exact:true}).click();
   await expect(view.getByRole('button',{name:'群聊',exact:true})).toHaveAttribute('aria-pressed','true');
@@ -190,12 +236,47 @@ try {
   await expect(view.getByText('已删除 2 条聊天记录',{exact:true})).toBeVisible();
   await view.getByRole('tab',{name:'设置',exact:true}).click();
   await expect(view.getByRole('heading',{name:'Controller 聊天行为规划与控制',exact:true})).toBeVisible();
+  if (process.argv.includes('--scope-policy')) {
+    const white = view.getByRole('region',{name:'会话白名单',exact:true});
+    const black = view.getByRole('region',{name:'会话黑名单',exact:true});
+    await expect(white).toBeVisible();
+    await expect(black).toHaveCount(0);
+    await white.getByLabel('选择已知会话',{exact:true}).click();
+    await view.getByRole('option',{name:'测试群',exact:true}).click();
+    await white.getByLabel('选择已知会话',{exact:true}).press('Escape');
+    await white.getByLabel('补充会话 UMO',{exact:true}).fill('onebot:GroupMessage:789');
+    await white.getByLabel('补充会话 UMO',{exact:true}).press('Enter');
+    await white.getByLabel('补充会话 UMO',{exact:true}).press('Escape');
+    await white.getByLabel('范围外会话处理方式',{exact:true}).click();
+    await view.getByRole('option',{name:'监听（只记录，禁止 LLM）',exact:true}).click();
+    await view.getByLabel('全部会话',{exact:true}).check();
+    await expect(black).toBeVisible();
+    await expect(white).toHaveCount(0);
+    await black.getByLabel('选择禁用会话',{exact:true}).click();
+    await view.getByRole('option',{name:'测试私聊',exact:true}).click();
+    await black.getByLabel('选择禁用会话',{exact:true}).press('Escape');
+    await black.getByLabel('补充禁用会话 UMO',{exact:true}).fill('onebot:GroupMessage:999');
+    await black.getByLabel('补充禁用会话 UMO',{exact:true}).press('Enter');
+    await black.getByLabel('补充禁用会话 UMO',{exact:true}).press('Escape');
+    await black.getByLabel('会话处理方式',{exact:true}).click();
+    await view.getByRole('option',{name:'丢弃（停止后续处理）',exact:true}).click();
+    await page.screenshot({path:join(output,'scope-blacklist.png'),animations:'disabled'});
+    await view.getByLabel('全部会话',{exact:true}).uncheck();
+    await expect(white).toBeVisible();
+    await expect(white).toContainText('测试群');
+    await expect(white).toContainText('onebot:GroupMessage:789');
+    await expect(white.getByText('监听（只记录，禁止 LLM）',{exact:true})).toBeVisible();
+    await page.screenshot({path:join(output,'scope-whitelist.png'),animations:'disabled'});
+    await view.getByRole('tab',{name:'统计',exact:true}).click();
+    await view.getByRole('button',{name:'取消',exact:true}).click();
+    await view.getByRole('tab',{name:'设置',exact:true}).click();
+  }
   if (process.argv.includes('--workspace-upgrade')) {
     await expect(view.getByLabel('行为风格文本',{exact:true})).toHaveCount(0);
-    await expect(view.locator('.settings-grid')).toHaveClass(/settings-grid--double/);
-    await view.getByRole('button',{name:'切换为单列',exact:true}).click();
-    await expect(view.locator('.settings-grid')).not.toHaveClass(/settings-grid--double/);
-    await view.getByRole('button',{name:'切换为双列',exact:true}).click();
+    await expect(view.getByRole('button',{name:/切换为[单双]列/})).toHaveCount(0);
+    const cards = await view.locator('.settings-grid > section').evaluateAll(elements=>elements.map(el=>{const rect=el.getBoundingClientRect();return {left:rect.left,width:rect.width};}));
+    expect(new Set(cards.map(card=>card.left)).size).toBe(1);
+    expect(Math.max(...cards.map(card=>card.width))).toBeLessThanOrEqual(960);
     const nav = view.getByRole('complementary',{name:'设置快速导航'});
     await nav.getByRole('button',{name:'日志设置',exact:true}).click();
     await expect(view.getByRole('heading',{name:'日志设置',exact:true})).toBeInViewport();
@@ -214,7 +295,7 @@ try {
     await nav.getByRole('button',{name:'主动发言',exact:true}).click();
     await expect(nav.getByRole('button',{name:'主动发言',exact:true})).toHaveAttribute('aria-current','location');
     await nav.getByRole('button',{name:'行为规划',exact:true}).click();
-    await page.screenshot({path:join(output,'settings-columns.png'),animations:'disabled'});
+    await page.screenshot({path:join(output,'settings-single.png'),animations:'disabled'});
     await view.getByRole('button',{name:'收起设置导航',exact:true}).click();
     await view.getByRole('button',{name:'展开设置导航',exact:true}).click();
   }
@@ -297,7 +378,7 @@ try {
     const behavior = view.getByRole('region',{name:'行为规划提示词',exact:true});
     const text = behavior.getByLabel('行为风格文本',{exact:true});
     await expect(text).toHaveValue(promptDefaults.behavior);
-    await expect(behavior.getByLabel('行为规划字数和Token估算')).toContainText(`${Array.from(promptDefaults.behavior).length} 字`);
+    await expect(behavior.getByLabel('行为规划字数和Tokens估计')).toContainText(`${Array.from(promptDefaults.behavior).length} 字`);
     await expect(view.getByRole('button',{name:'保存并重载',exact:true})).toBeDisabled();
     await view.getByRole('tab',{name:'设置',exact:true}).click();
     await expect(view.getByRole('dialog')).toBeHidden();
@@ -305,17 +386,37 @@ try {
     await expect(text).toHaveValue(promptDefaults.behavior);
     await page.screenshot({path:join(output,'prompt-defaults.png'),animations:'disabled'});
     await expect(view.getByRole('region',{name:'危险操作区',exact:true})).toHaveCount(0);
-    await behavior.getByRole('button',{name:'查看默认',exact:true}).click();
-    await expect(view.getByRole('dialog')).toContainText(promptDefaults.behavior);
-    await view.getByRole('button',{name:'复制到输入框',exact:true}).click();
-    await expect(text).toHaveValue(promptDefaults.behavior);
+    const expression = view.getByRole('region',{name:'表达风格提示词',exact:true});
+    await expression.getByLabel('表达风格文本',{exact:true}).fill('更长的用户提示词。'.repeat(200));
+    expect(Math.abs((await behavior.boundingBox()).height-(await expression.boundingBox()).height)).toBeLessThan(2);
+    await page.screenshot({path:join(output,'prompt-grid.png'),animations:'disabled'});
+    await expression.getByRole('button',{name:'使用默认',exact:true}).click();
+    await behavior.getByRole('button',{name:'对比默认',exact:true}).click();
+    await expect(view.getByLabel('系统默认提示词正文',{exact:true})).toHaveValue(promptDefaults.behavior);
+    await expect(view.getByLabel('系统默认提示词正文',{exact:true})).toHaveAttribute('readonly');
+    await expect(view.getByLabel('自定义提示词正文',{exact:true})).toHaveValue(promptDefaults.behavior);
+    await expect(view.getByLabel('默认提示词字数和Tokens估计')).toContainText('估计');
+    await expect(view.getByLabel('自定义提示词字数和Tokens估计')).toContainText('Tokens');
+    await iframe.evaluate(async () => {
+      await Promise.all(document.getAnimations().filter(a=>a.effect.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));
+    });
+    await page.screenshot({path:join(output,'prompt-compare.png'),animations:'disabled'});
     const draft = '自定义规划\n额外短评';
-    await text.fill(draft);
-    await expect(behavior.getByLabel('行为规划字数和Token估算')).toContainText(`${Array.from(draft).length} 字`);
-    await behavior.getByRole('button',{name:'查看差异',exact:true}).click();
-    await expect(view.getByRole('dialog')).toContainText('+自定义规划');
-    await expect(view.locator('.diff-add').first()).toHaveCSS('display','block');
+    await view.getByLabel('自定义提示词正文',{exact:true}).fill(draft);
+    await expect(text).toHaveValue(draft);
+    await expect(behavior.getByLabel('行为规划字数和Tokens估计')).toContainText(`${Array.from(draft).length} 字`);
+    await view.getByRole('button',{name:'显示差异',exact:true}).click();
+    await expect(view.getByRole('region',{name:'提示词差异对比'})).toContainText('自定义规划');
+    await expect(view.locator('.diff-add').first()).toHaveCSS('display','flex');
     await page.screenshot({path:join(output,'prompt-diff.png'),animations:'disabled'});
+    await page.evaluate(()=>window.context(true));
+    await expect(view.locator('.v-application')).toHaveClass(/v-theme--dark/);
+    await expect(view.locator('.diff-add code').first()).toHaveCSS('color','rgb(232, 234, 237)');
+    await page.screenshot({path:join(output,'prompt-diff-dark.png'),animations:'disabled'});
+    await page.evaluate(()=>window.context(false));
+    await expect(view.locator('.v-application')).toHaveClass(/v-theme--light/);
+    await view.getByRole('button',{name:'返回编辑',exact:true}).click();
+    await expect(view.getByLabel('自定义提示词正文',{exact:true})).toHaveValue(draft);
     await view.getByRole('button',{name:'关闭',exact:true}).click();
     await behavior.getByLabel('行为风格人格片段',{exact:true}).click();
     await view.getByLabel('搜索人格',{exact:true}).fill('测试人格');
@@ -351,7 +452,15 @@ try {
   await expect(view.getByRole('heading',{name:'Humanization'})).toHaveCSS('color','rgb(232, 234, 237)');
   await page.screenshot({path:join(output,'mobile-settings.png')});
   expect(await iframe.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
-  await expect(view.getByRole('button',{name:'切换为双列',exact:true})).toBeDisabled();
+  await expect(view.getByRole('button',{name:/切换为[单双]列/})).toHaveCount(0);
+  if (process.argv.includes('--workspace-upgrade')) {
+    await view.getByRole('tab',{name:'提示词',exact:true}).click();
+    await view.getByRole('region',{name:'行为规划提示词',exact:true}).getByRole('button',{name:'对比默认',exact:true}).click();
+    await expect(view.getByLabel('系统默认提示词正文',{exact:true})).toHaveValue(promptDefaults.behavior);
+    expect(await iframe.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+    await view.getByRole('button',{name:'关闭提示词对比',exact:true}).click();
+    await expect(view.getByRole('dialog')).toBeHidden();
+  }
   await view.getByRole('tab',{name:'聊天',exact:true}).click();
   await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeVisible();
   await page.screenshot({path:join(output,'mobile-filters.png'),animations:'disabled'});

@@ -12,8 +12,8 @@ const bridge = inject('bridge');
 const defaults = {q:'', sessions:[], chat_type:'', start:'', end:'', kind:'', sender:'', component:'', reply:'', emotion:'', required:'', trigger:'', participant:'', bot_reply:'', coverage_gap:'', sort:'timestamp:desc'};
 const filters = reactive({...defaults, sessions:[]});
 const filtersOpen = ref(true);
-const sessionTitles = computed(() => Object.fromEntries(props.sessions.map(item => [item.umo,item.title])));
-const defaultWidths = {timestamp:180,conversation:360,headline:320,state:180,actions:112};
+const sessionTitles = computed(() => Object.fromEntries(props.sessions.map(item => [item.umo,item.title !== item.umo ? item.title : item.umo.split(':').slice(2).join(':')])));
+const defaultWidths = {timestamp:168,conversation:172,headline:216,state:132,actions:88};
 const widths = reactive({...defaultWidths});
 const tableWidth = computed(() => Object.values(widths).reduce((sum,width) => sum+width,48));
 const page = ref(1), limit = ref(25);
@@ -26,10 +26,10 @@ const detail = ref(null), confirm = ref(false), deleting = ref(false), success =
 let generation = 0, timer;
 const titles = { messages:'聊天记录', decisions:'最近反应', topics:'话题', diaries:'日记' };
 const headers = computed(() => [
-  { title:'时间', key:'timestamp', width:widths.timestamp }, { title:'会话', key:'conversation', sortable:false, width:widths.conversation },
+  { title:'时间', key:'timestamp', width:widths.timestamp }, { title:'会话', key:'conversation', width:widths.conversation },
   { title:props.category === 'decisions' ? '规划原因' : '内容', key:'headline', width:widths.headline },
-  { title:props.category === 'messages' ? '发送者' : '状态', key:'state', sortable:false, width:widths.state },
-  { title:'操作', key:'actions', sortable:false, width:widths.actions },
+  { title:props.category === 'messages' ? '发送者' : '状态', key:'state', width:widths.state },
+  { title:'操作', key:'actions', sortable:false, width:widths.actions, cellProps:{class:'record-actions'} },
 ]);
 function time(value) { return new Date(value * 1000).toLocaleString('zh-CN', { timeZone:props.timezone, hour12:false }); }
 async function load() {
@@ -84,16 +84,15 @@ const detailFields = computed(() => {
       </div>
     </v-expand-x-transition>
     <v-card class="records-list" rounded="xl">
-    <v-data-table-server v-model="selected" v-model:page="page" v-model:items-per-page="limit" v-model:sort-by="sort" class="records-table" :style="{'--records-width':`${tableWidth}px`}" :headers="headers" :items="rows" :items-length="total" :loading="loading" :items-per-page-options="[10,25,50,100]" item-value="key" show-select select-strategy="page" must-sort hover>
+    <v-data-table-server v-model="selected" v-model:page="page" v-model:items-per-page="limit" v-model:sort-by="sort" class="records-table" :style="{'--records-width':`${tableWidth}px`}" :headers="headers" :items="rows" :items-length="total" :loading="loading" :items-per-page-options="[10,25,50,100]" :mobile="false" item-value="key" show-select select-strategy="page" must-sort hover>
       <template #headers="controls"><ResizableHeaders v-bind="controls" :widths="widths" :defaults="defaultWidths" @resize="widths[$event.key] = $event.width" /></template>
       <template #item.timestamp="{item}">{{ time(item.timestamp) }}</template>
       <template #item.conversation="{item}">
-        <div class="text-body-2 text-truncate" :title="sessionLabel(item.conversation,sessionTitles[item.conversation])">{{ sessionLabel(item.conversation,sessionTitles[item.conversation]) }}</div>
-        <div class="text-caption text-medium-emphasis text-truncate" :title="item.conversation">{{ item.conversation }}</div>
+        <div class="text-body-2 text-truncate session-name" :title="`${sessionLabel(item.conversation,sessionTitles[item.conversation])}\n${item.conversation}`">{{ sessionTitles[item.conversation] || item.conversation.split(':').slice(2).join(':') }}</div>
       </template>
-      <template #item.headline="{item}"><span class="text-body-2 text-break">{{ item.headline?.slice(0,180) }}{{ item.headline?.length > 180 ? '…' : '' }}</span></template>
+      <template #item.headline="{item}"><div class="text-body-2 text-truncate record-headline" :title="item.headline">{{ item.headline }}</div></template>
       <template #item.state="{item}">
-        <span v-if="category === 'messages'" class="text-caption">{{ item.sender_name }}<br>{{ item.direction === 'out' ? '机器人回复' : item.sender_id }}</span>
+        <div v-if="category === 'messages'" class="text-caption"><div class="text-truncate" :title="item.sender_name">{{ item.sender_name }}</div><div class="text-truncate">{{ item.direction === 'out' ? '机器人回复' : item.sender_id }}</div></div>
         <div v-else-if="category === 'decisions'" class="decision-state d-flex flex-column align-start ga-1 py-1">
           <v-chip size="small" :color="item.decision_json.reply ? 'primary' : undefined">{{ item.decision_json.reply ? '回复' : '观望' }}</v-chip>
           <span class="text-caption text-break">{{ emotions.find(e=>e.value === item.decision_json.emotion.primary)?.title || item.decision_json.emotion.primary }}</span>
@@ -138,8 +137,10 @@ const detailFields = computed(() => {
 .filter-column.expand-x-transition-leave-active { transition-duration: 180ms !important; }
 .records-list { flex: 1 1 0; min-width: 0; }
 .decision-state { min-width: 0; max-width: 100%; }
-.records-table :deep(tbody td) { height: auto !important; padding-block: 12px; vertical-align: middle; }
+.records-table :deep(tbody td) { height: auto !important; padding: 14px 16px !important; vertical-align: middle; }
 .records-table :deep(table) { table-layout: fixed; width: var(--records-width); min-width: 100%; }
+.records-table :deep(td.record-actions), .records-table :deep(th.record-actions) { position: sticky !important; right: 0; z-index: 2 !important; padding-inline: 8px !important; white-space: nowrap; background: rgb(var(--v-theme-surface)) !important; box-shadow: -1px 0 rgba(var(--v-theme-on-surface),0.1); }
+.records-table :deep(th.record-actions) { z-index: 3 !important; }
 @media (max-width: 800px) {
   .records-layout { flex-direction: column; align-items: stretch; }
   .filter-column { width: 100%; margin-bottom: 16px; }

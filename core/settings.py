@@ -40,6 +40,9 @@ class Settings:
         self.controller = config["controller"]
         self.proactive = config["proactive"]
         self.prompts = config["prompts"]
+        for key in ("outside_action", "blacklist_action"):
+            if self.scope[key] not in ("ignore", "listen", "drop"):
+                raise ValueError(f"Unknown scope action: {key}")
         if self.controller["mode"] not in ("probability", "scheduled"):
             raise ValueError("Unknown Controller mode")
         if not self.controller["robot_name"].strip():
@@ -121,8 +124,35 @@ class Settings:
         self.quiet_end = minute_of_day(self.proactive["quiet_end"])
 
     def selected(self, umo: str, group_umo: str) -> bool:
-        selected = self.scope["sessions"] + self.scope["manual_sessions"]
-        return self.scope["all_sessions"] or umo in selected or group_umo in selected
+        return self.scope_action(umo, group_umo) == "active"
+
+    def scope_action(self, umo: str, group_umo: str) -> str:
+        """Resolve ordinary-message handling for an exact or shared group route.
+
+        Args:
+            umo: The current AstrBot route, possibly isolated by group member.
+            group_umo: The canonical group route, or the same UMO for private chats.
+
+        Returns:
+            active, ignore, listen or drop; matched plugin commands are exempted
+            by the event entry points, independently of this route policy.
+        """
+        if self.scope["all_sessions"]:
+            listed = (
+                self.scope["blacklist_sessions"]
+                + self.scope["blacklist_manual_sessions"]
+            )
+            return (
+                self.scope["blacklist_action"]
+                if umo in listed or group_umo in listed
+                else "active"
+            )
+        listed = self.scope["sessions"] + self.scope["manual_sessions"]
+        return (
+            "active"
+            if umo in listed or group_umo in listed
+            else self.scope["outside_action"]
+        )
 
     def is_command_text(self, text: str) -> bool:
         return any(

@@ -127,6 +127,24 @@ class Runtime:
     async def observe(self, event: AstrMessageEvent):
         if self.closed or event.get_extra("humanization_management"):
             return
+        action = self.adapter.scope_action(event)
+        internal = event.get_extra("humanization_scheduled") or event.get_extra(
+            "humanization_idle"
+        )
+        if internal and action != "active":
+            event.stop_event()
+            return
+        if action != "active":
+            plugin_command = self.adapter.is_plugin_command(event)
+            if plugin_command and action != "listen":
+                return
+            if action == "ignore":
+                return
+            if action == "drop":
+                event.stop_event()
+                return
+            if not plugin_command:
+                self.adapter.suppress_native_llm(event)
         if self.resetting_all:
             event.should_call_llm(True)
             return
@@ -178,7 +196,11 @@ class Runtime:
                 text=event.message_str,
             )
             event.set_extra("humanization_command", command)
-            if not command and self.settings.controller["enabled"]:
+            if (
+                action == "active"
+                and not command
+                and self.settings.controller["enabled"]
+            ):
                 # Owning the trigger and being allowed to generate are separate.
                 # Denial must not reopen the host's default @/wake reply path.
                 event.should_call_llm(True)
@@ -199,7 +221,11 @@ class Runtime:
                 return
             if await self.storage.append(message):
                 event.set_extra("humanization_message", message)
-                if self.settings.controller["mode"] == "scheduled" and not command:
+                if (
+                    action == "active"
+                    and self.settings.controller["mode"] == "scheduled"
+                    and not command
+                ):
                     event.set_extra(
                         "humanization_record", await self.storage.session(message.scope)
                     )
@@ -216,6 +242,7 @@ class Runtime:
         if (
             self.closed
             or self.resetting_all
+            or self.adapter.scope_action(event) != "active"
             or not event.get_extra("humanization_claimed")
         ):
             return
@@ -295,6 +322,12 @@ class Runtime:
                 if (
                     self.closed
                     or self.resetting_all
+                    or not self.settings.selected(
+                        message.umo,
+                        message.umo
+                        if message.private
+                        else f"{message.platform}:GroupMessage:{message.group_id}",
+                    )
                     or not await self.adapter.can_reply(event)
                 ):
                     return
@@ -478,6 +511,15 @@ class Runtime:
                 self.active_scopes.pop(message.scope)
 
     async def inject(self, event, request):
+        if self.adapter.is_plugin_command(event) or event.get_extra(
+            "humanization_management"
+        ):
+            return
+        if self.settings.recorder["enabled"] and ScopeFilter().filter(event, {}):
+            action = self.adapter.scope_action(event)
+            if action in ("listen", "drop"):
+                event.stop_event()
+                return
         turn = event.get_extra("humanization_turn")
         if not turn:
             if (
