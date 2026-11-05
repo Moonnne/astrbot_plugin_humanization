@@ -32,6 +32,9 @@ const records = {
 };
 const promptDefaults = Object.fromEntries(await Promise.all(['behavior','expression','group','private'].map(async name=>[name,(await readFile(join(root,`resource/prompts/${name}.txt`),'utf8')).trim()])));
 const seed = {schema,config,prompt_defaults:promptDefaults,revision:'initial',reset_confirmation:'CLEAR_ALL_HUMANIZATION_DATA',choices:{select_provider:[{title:'DeepSeek',value:'deepseek'}],select_persona:[{title:'测试人格',value:'persona1',description:'角色片段内容'}]}};
+seed.choices.sessions = [{title:'测试群',value:'onebot:GroupMessage:123'},{title:'测试私聊',value:'onebot:FriendMessage:456'}];
+seed.choices.sessions.forEach(item => Object.assign(item,{adapter_type:'aiocqhttp',adapter_name:'OneBot',supported:true,logo_url:'/api/file/test-logo'}));
+seed.choices.sessions.push({title:'其他平台',value:'custom:GroupMessage:999',adapter_type:'custom',adapter_name:'Custom',supported:false,logo_url:''});
 const harness = `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0">
 <iframe title="Humanization" src="/view/" sandbox="allow-scripts allow-forms allow-downloads" style="width:100%;height:100vh;border:0"></iframe>
 <script>
@@ -68,6 +71,7 @@ const server = createServer(async (req,res) => {
     const url = req.url.split('?')[0];
     const files = {'/view/app.js':'app.js','/view/style.css':'style.css','/view/assets/vendor.js':'assets/vendor.js'};
     if (url === '/') { res.setHeader('Content-Type','text/html; charset=utf-8'); res.end(harness); }
+    else if (url === '/api/file/test-logo') { res.setHeader('Content-Type','image/svg+xml'); res.end('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="10" fill="gray"/></svg>'); }
     else if (url === '/view/') {
       res.setHeader('Content-Type','text/html; charset=utf-8');
       const html = await readFile(join(root,'views/humanization/index.html'),'utf8');
@@ -241,35 +245,55 @@ try {
     const black = view.getByRole('region',{name:'会话黑名单',exact:true});
     await expect(white).toBeVisible();
     await expect(black).toHaveCount(0);
-    await white.getByLabel('选择已知会话',{exact:true}).click();
-    await view.getByRole('option',{name:'测试群',exact:true}).click();
-    await white.getByLabel('选择已知会话',{exact:true}).press('Escape');
-    await white.getByLabel('补充会话 UMO',{exact:true}).fill('onebot:GroupMessage:789');
-    await white.getByLabel('补充会话 UMO',{exact:true}).press('Enter');
-    await white.getByLabel('补充会话 UMO',{exact:true}).press('Escape');
-    await white.getByLabel('范围外会话处理方式',{exact:true}).click();
-    await view.getByRole('option',{name:'监听（只记录，禁止 LLM）',exact:true}).click();
-    await view.getByLabel('全部会话',{exact:true}).check();
+    await expect(white.getByText('旁观',{exact:true})).toBeVisible();
+    await white.getByRole('button',{name:'选择或添加会话',exact:true}).click();
+    await expect(view.getByText(/当前插件不支持处理/)).toBeVisible();
+    await expect.poll(()=>view.locator('img[alt="OneBot"]').first().evaluate(img=>img.complete && img.naturalWidth > 0)).toBeTruthy();
+    await view.getByLabel('搜索会话名称或 ID',{exact:true}).fill('测试群');
+    await expect(view.locator('[aria-label="可选会话"]')).not.toContainText('测试私聊');
+    await view.getByLabel('选择测试群',{exact:true}).check();
+    await view.getByRole('button',{name:'添加所选（1）',exact:true}).click();
+    await expect(white.getByText('正常',{exact:true})).toBeVisible();
+    await white.getByLabel('测试群处理方式',{exact:true}).press('Enter');
+    await view.getByRole('option',{name:'旁观',exact:true}).click();
+    await white.getByRole('button',{name:'选择或添加会话',exact:true}).click();
+    await view.getByLabel('补充未知会话 UMO',{exact:true}).fill('invalid');
+    await view.getByRole('button',{name:'添加 UMO',exact:true}).click();
+    await expect(view.getByText(/请输入有效 UMO/)).toBeVisible();
+    await view.getByLabel('补充未知会话 UMO',{exact:true}).fill(' onebot:GroupMessage:789 ');
+    await view.getByRole('button',{name:'添加 UMO',exact:true}).click();
+    await white.getByLabel('范围外默认处理方式',{exact:true}).press('Enter');
+    await view.getByRole('option',{name:'监听',exact:true}).click();
+    await view.getByRole('button',{name:'黑名单模式',exact:true}).click();
     await expect(black).toBeVisible();
     await expect(white).toHaveCount(0);
-    await black.getByLabel('选择禁用会话',{exact:true}).click();
-    await view.getByRole('option',{name:'测试私聊',exact:true}).click();
-    await black.getByLabel('选择禁用会话',{exact:true}).press('Escape');
-    await black.getByLabel('补充禁用会话 UMO',{exact:true}).fill('onebot:GroupMessage:999');
-    await black.getByLabel('补充禁用会话 UMO',{exact:true}).press('Enter');
-    await black.getByLabel('补充禁用会话 UMO',{exact:true}).press('Escape');
-    await black.getByLabel('会话处理方式',{exact:true}).click();
-    await view.getByRole('option',{name:'丢弃（停止后续处理）',exact:true}).click();
+    await black.getByRole('button',{name:'选择或添加会话',exact:true}).click();
+    await view.getByRole('button',{name:'私聊',exact:true}).click();
+    await expect(view.locator('[aria-label="可选会话"]')).not.toContainText('测试群');
+    await view.getByLabel('选择测试私聊',{exact:true}).check();
+    await view.getByRole('button',{name:'添加所选（1）',exact:true}).click();
+    await black.getByLabel('测试私聊处理方式',{exact:true}).press('Enter');
+    await view.getByRole('option',{name:'丢弃',exact:true}).click();
     await page.screenshot({path:join(output,'scope-blacklist.png'),animations:'disabled'});
-    await view.getByLabel('全部会话',{exact:true}).uncheck();
+    await view.getByRole('button',{name:'白名单模式',exact:true}).click();
     await expect(white).toBeVisible();
     await expect(white).toContainText('测试群');
     await expect(white).toContainText('onebot:GroupMessage:789');
-    await expect(white.getByText('监听（只记录，禁止 LLM）',{exact:true})).toBeVisible();
+    await expect(white.getByText('监听',{exact:true})).toBeVisible();
+    await expect(white.getByText('旁观',{exact:true})).toBeVisible();
+    await view.getByLabel('监听会话',{exact:true}).uncheck();
+    await expect(view.getByRole('button',{name:'黑名单模式',exact:true})).toBeDisabled();
+    await view.getByLabel('监听会话',{exact:true}).check();
     await page.screenshot({path:join(output,'scope-whitelist.png'),animations:'disabled'});
-    await view.getByRole('tab',{name:'统计',exact:true}).click();
-    await view.getByRole('button',{name:'取消',exact:true}).click();
-    await view.getByRole('tab',{name:'设置',exact:true}).click();
+    await view.getByRole('button',{name:'保存并重载',exact:true}).click();
+    await view.getByRole('button',{name:'确认保存',exact:true}).click();
+    await expect.poll(()=>page.evaluate(()=>window.saved?.config?.scope.sessions)).toEqual(['onebot:GroupMessage:123','onebot:GroupMessage:789']);
+    expect(await page.evaluate(()=>window.saved.config.scope.rules)).toEqual([
+      {__template_key:'session',mode:'whitelist',umo:'onebot:GroupMessage:123',action:'observe'},
+      {__template_key:'session',mode:'blacklist',umo:'onebot:FriendMessage:456',action:'drop'},
+    ]);
+    console.log('Scope picker saves string UMOs, independent mode rules and master switch.');
+    await page.evaluate(()=>window.saved=null);
   }
   if (process.argv.includes('--workspace-upgrade')) {
     await expect(view.getByLabel('行为风格文本',{exact:true})).toHaveCount(0);

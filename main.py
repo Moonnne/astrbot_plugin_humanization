@@ -113,7 +113,7 @@ class Humanization(Star):
         if action == "drop":
             event.stop_event()
             return
-        if action == "listen":
+        if action in ("listen", "observe"):
             self.runtime.adapter.suppress_native_llm(event)
             return
         await self.runtime.adapter.filter_group_robot(event)

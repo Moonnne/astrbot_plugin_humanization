@@ -22,7 +22,7 @@ from .controller.controller import Controller
 from .controller.delivery import Delivery
 from .controller.prompts import Prompts
 from .controller.scheduler import Scheduler
-from .management import Management, ManagementAccessFilter
+from .management import Management, ManagementAccessFilter, ManagementMessageFilter
 from .recorder.storage import Storage
 from .recorder.summarizer import Summarizer
 from .settings import Settings
@@ -125,7 +125,15 @@ class Runtime:
                 )
 
     async def observe(self, event: AstrMessageEvent):
-        if self.closed or event.get_extra("humanization_management"):
+        if (
+            self.closed
+            or event.get_extra("humanization_management")
+            or ManagementMessageFilter().filter(event, {})
+        ):
+            return
+        plugin_command = self.adapter.is_plugin_command(event)
+        if plugin_command and self.settings.recorder["filter_commands"]:
+            event.set_extra("humanization_command", True)
             return
         action = self.adapter.scope_action(event)
         internal = event.get_extra("humanization_scheduled") or event.get_extra(
@@ -135,8 +143,7 @@ class Runtime:
             event.stop_event()
             return
         if action != "active":
-            plugin_command = self.adapter.is_plugin_command(event)
-            if plugin_command and action != "listen":
+            if plugin_command and action not in ("listen", "observe"):
                 return
             if action == "ignore":
                 return
@@ -146,7 +153,8 @@ class Runtime:
             if not plugin_command:
                 self.adapter.suppress_native_llm(event)
         if self.resetting_all:
-            event.should_call_llm(True)
+            if not plugin_command:
+                event.should_call_llm(True)
             return
         scheduled = event.get_extra("humanization_scheduled")
         if scheduled:
@@ -177,7 +185,7 @@ class Runtime:
         message = self.adapter.snapshot(event)
         scope = message.scope
         version = self.reset_versions.get(scope, 0)
-        if await self.adapter.filter_group_robot(event):
+        if not plugin_command and await self.adapter.filter_group_robot(event):
             return
         async with self.record_locks.setdefault(scope, asyncio.Lock()):
             if (
@@ -186,11 +194,13 @@ class Runtime:
                 or version != self.reset_versions.get(scope, 0)
                 or message.received_at < self.reset_since.get(scope, 0)
             ):
-                event.should_call_llm(True)
+                if not plugin_command:
+                    event.should_call_llm(True)
                 return
             command = self.adapter.is_command(event)
             self.log.debug(
                 "message.inspect",
+                scope_action=action,
                 command=command,
                 umo=event.unified_msg_origin,
                 text=event.message_str,
@@ -517,7 +527,7 @@ class Runtime:
             return
         if self.settings.recorder["enabled"] and ScopeFilter().filter(event, {}):
             action = self.adapter.scope_action(event)
-            if action in ("listen", "drop"):
+            if action in ("listen", "observe", "drop"):
                 event.stop_event()
                 return
         turn = event.get_extra("humanization_turn")

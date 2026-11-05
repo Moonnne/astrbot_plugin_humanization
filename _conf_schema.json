@@ -3,11 +3,17 @@
     "type": "object",
     "description": "会话启用范围",
     "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "监听会话",
+        "default": true,
+        "hint": "会话监听总开关。关闭后跳过本插件的会话处理，由 AstrBot 处理；不影响插件指令。"
+      },
       "all_sessions": {
         "type": "bool",
-        "description": "全部会话",
+        "description": "黑名单模式",
         "default": false,
-        "hint": "关闭时通过白名单选择启用插件的 OneBot 会话；开启时处理全部会话，黑名单中的会话按下方策略处理。范围策略在 Recorder 开启时生效，已匹配的插件指令始终豁免。"
+        "hint": "关闭为白名单模式，开启为黑名单模式。白名单内默认正常，黑名单外正常；已匹配的指令始终豁免。"
       },
       "sessions": {
         "type": "list",
@@ -31,11 +37,23 @@
       "outside_action": {
         "type": "string",
         "description": "范围外会话处理方式",
-        "default": "ignore",
-        "options": ["ignore", "listen", "drop"],
-        "labels": ["忽略（由 AstrBot 处理）", "监听（只记录，禁止 LLM）", "丢弃（停止后续处理）"],
-        "hint": "白名单未命中时：忽略会跳过插件并交由 AstrBot；监听沿用 Recorder 入库过滤，不整理日记、不调用 Controller 或主模型，普通插件指令正常执行；丢弃不入库并停止普通消息后续处理。已匹配的插件指令及其 LLM 请求始终豁免范围策略。",
-        "condition": {"all_sessions": false}
+        "default": "observe",
+        "options": [
+          "ignore",
+          "listen",
+          "observe",
+          "drop"
+        ],
+        "labels": [
+          "跳过 - 直接将消息传递到原生Astrbot",
+          "监听 - 只记录聊天记录",
+          "旁观 - 处理消息但不回复",
+          "丢弃 - 不再传递消息"
+        ],
+        "hint": "不影响已匹配的插件指令。旁观允许 Recorder 整理话题和日记，监听仅入库，两者均禁止普通回复。",
+        "condition": {
+          "all_sessions": false
+        }
       },
       "blacklist_sessions": {
         "type": "list",
@@ -43,23 +61,89 @@
         "default": [],
         "options": [],
         "hint": "黑名单：所选会话不正常启用插件，改用下方处理方式；未命中黑名单的会话正常启用插件。",
-        "condition": {"all_sessions": true}
+        "condition": {
+          "all_sessions": true
+        }
       },
       "blacklist_manual_sessions": {
         "type": "list",
         "description": "补充禁用会话 UMO",
         "default": [],
         "hint": "可通过 /sid 获取实际 UMO。群聊填写 [平台实例]:GroupMessage:[群号]，私聊填写 [平台实例]:FriendMessage:[用户号]。方括号是占位符，请替换为实际值。",
-        "condition": {"all_sessions": true}
+        "condition": {
+          "all_sessions": true
+        }
       },
       "blacklist_action": {
         "type": "string",
-        "description": "会话处理方式",
-        "default": "ignore",
-        "options": ["ignore", "listen", "drop"],
-        "labels": ["忽略（由 AstrBot 处理）", "监听（只记录，禁止 LLM）", "丢弃（停止后续处理）"],
-        "hint": "仅用于命中黑名单的普通消息。忽略：跳过插件，由 AstrBot 处理；监听：只入库，不整理日记，不调用 Controller 或主模型；丢弃：不入库，停止后续处理。已匹配的插件指令及其 LLM 请求始终豁免范围策略。",
-        "condition": {"all_sessions": true}
+        "description": "名单内默认处理方式",
+        "default": "observe",
+        "options": [
+          "ignore",
+          "listen",
+          "observe",
+          "drop"
+        ],
+        "labels": [
+          "跳过（交由 AstrBot）",
+          "监听（只记录聊天）",
+          "旁观（记录聊天、话题和日记）",
+          "丢弃（阻断普通消息）"
+        ],
+        "hint": "不影响已匹配的插件指令。旁观允许 Recorder 整理话题和日记，监听仅入库，两者均禁止普通回复。",
+        "condition": {
+          "all_sessions": true
+        }
+      },
+      "rules": {
+        "type": "template_list",
+        "description": "逐会话处理方式",
+        "default": [],
+        "hint": "覆盖所属名单的默认方式；相同 UMO 在黑白名单中可分别设置，精确会话优先于共享群会话。",
+        "templates": {
+          "session": {
+            "name": "会话规则",
+            "items": {
+              "mode": {
+                "type": "string",
+                "description": "所属名单",
+                "default": "whitelist",
+                "options": [
+                  "whitelist",
+                  "blacklist"
+                ],
+                "labels": [
+                  "白名单",
+                  "黑名单"
+                ]
+              },
+              "umo": {
+                "type": "string",
+                "description": "会话 UMO",
+                "default": ""
+              },
+              "action": {
+                "type": "string",
+                "description": "处理方式",
+                "default": "active",
+                "options": [
+                  "active",
+                  "ignore",
+                  "listen",
+                  "observe",
+                  "drop"
+                ],
+                "labels": [
+                  "正常（完整流程）",
+                  "跳过（交由 AstrBot）",
+                  "监听（只记录聊天）",
+                  "旁观（记录聊天、话题和日记）",
+                  "丢弃（阻断普通消息）"
+                ]
+              }
+            }
+          }
+        }
       }
     }
   },

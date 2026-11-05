@@ -630,6 +630,7 @@ class AstrBotAdapter:
                 + self.settings.scope["manual_sessions"]
                 + self.settings.scope["blacklist_sessions"]
                 + self.settings.scope["blacklist_manual_sessions"]
+                + [rule["umo"] for rule in self.settings.scope["rules"]]
             ):
                 parts = umo.split(":", 2)
                 if len(parts) == 3 and parts[1] == "GroupMessage":

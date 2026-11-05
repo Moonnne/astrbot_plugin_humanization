@@ -82,6 +82,7 @@ async def test_selected_group_gate_does_not_require_observer_to_have_run(plugin)
 
 
 async def test_request_without_observer_outside_selected_group_is_not_blocked(plugin):
+    plugin.settings.scope["outside_action"] = "ignore"
     plugin.settings.recorder["minimum_context_enabled"] = True
     event = Event("", direct=True)
     event.message_obj.group_id = "456"

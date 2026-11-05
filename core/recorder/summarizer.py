@@ -23,6 +23,8 @@ class Summarizer:
         self.resetting = set()
 
     async def tick(self):
+        if not self.settings.scope["enabled"] or not self.settings.recorder["enabled"]:
+            return
         today = datetime.now(self.settings.timezone).date().isoformat()
         await self.storage.seal_before(today)
         if not self.settings.recorder["summary_provider"]:
@@ -32,7 +34,10 @@ class Summarizer:
                 if session["scope"] in self.resetting:
                     continue
                 group_umo = f"{session['platform']}:GroupMessage:{session['group_id']}"
-                if not self.settings.selected(session["umo"], group_umo):
+                if self.settings.scope_action(session["umo"], group_umo) not in (
+                    "active",
+                    "observe",
+                ):
                     continue
                 pending = await self.storage.pending_messages(
                     session["scope"],

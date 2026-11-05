@@ -332,3 +332,77 @@ async def test_native_waking_and_handlers_remain_silent_for_denied_commands(
     assert stopped and event.call_llm
     assert event.sent == []
     assert not await managed.storage.rows("SELECT * FROM messages")
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("black", [False, True])
+@pytest.mark.parametrize("action", ["active", "ignore", "listen", "observe", "drop"])
+async def test_hum_info_through_native_waking_ignores_scope(
+    managed, monkeypatch, enabled, black, action
+):
+    managed.settings.scope.update(
+        enabled=enabled,
+        all_sessions=black,
+        rules=[
+            {
+                "mode": "blacklist" if black else "whitelist",
+                "umo": "onebot:GroupMessage:123",
+                "action": action,
+            }
+        ],
+    )
+    managed.context.get_db = lambda: SimpleNamespace(
+        get_umo_aliases=AsyncMock(return_value=[])
+    )
+    config = copy.deepcopy(DEFAULT_CONFIG)
+    config.update(admins_id=["42"], wake_prefix=["/"])
+    stage = WakingCheckStage()
+    await stage.initialize(
+        SimpleNamespace(
+            astrbot_config=config, db_helper=Mock(), astrbot_config_id="test"
+        )
+    )
+    stage._umo_auto_name_recorder = SimpleNamespace(schedule=Mock())
+    handlers = [
+        h
+        for h in star_handlers_registry.get_handlers_by_event_type(
+            EventType.AdapterMessageEvent
+        )
+        if h.handler_module_path == "humanization_test.main"
+    ]
+    monkeypatch.setattr(
+        star_handlers_registry,
+        "get_handlers_by_event_type",
+        lambda kind, **kwargs: (
+            handlers if kind == EventType.AdapterMessageEvent else []
+        ),
+    )
+    monkeypatch.setitem(
+        star_map, "humanization_test.main", SimpleNamespace(name="Humanization")
+    )
+    monkeypatch.setattr(
+        SessionPluginManager,
+        "filter_handlers_by_session",
+        AsyncMock(side_effect=lambda event, items: items),
+    )
+    event = Event("/hum info")
+    await stage.process(event)
+    assert not event.is_stopped()
+    activated = event.get_extra("activated_handlers")
+    assert "info" in [handler.handler_name for handler in activated]
+    instance = Humanization.__new__(Humanization)
+    instance.runtime = managed
+    result = []
+    for handler in activated:
+        params = event.get_extra("handlers_parsed_params", {}).get(
+            handler.handler_full_name, {}
+        )
+        async for _ in call_handler(
+            event, getattr(instance, handler.handler_name), **params
+        ):
+            if event.get_result():
+                result.append(event.get_result().get_plain_text())
+        if event.is_stopped():
+            break
+    assert any("查询时间" in text for text in result)
+    assert not await managed.storage.rows("SELECT * FROM messages")

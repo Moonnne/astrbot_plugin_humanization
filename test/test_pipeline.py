@@ -312,7 +312,7 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
     assert (
         config["scope"]["outside_action"]
         == config["scope"]["blacklist_action"]
-        == "ignore"
+        == "observe"
     )
     config["prompts"]["behavior"] = ""
     config["prompts"]["group"] = "  "

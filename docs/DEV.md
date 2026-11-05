@@ -117,9 +117,11 @@ Controller 的用户输入按“观察说明 → 话题 → 滚动消息 → 最
 
 ### 指令过滤
 
-会话策略由 `Settings.scope_action()` 统一返回 `active`／`ignore`／`listen`／`drop`。保留 `sessions`／`manual_sessions` 作为白名单，新增 `blacklist_sessions`／`blacklist_manual_sessions`；`outside_action` 用于白名单未命中，`blacklist_action` 用于黑名单命中，均默认 `ignore`。`selected()` 仅表示正常处理，摘要与空闲主动检查沿用它；监听会话不会触发辅助模型。范围过滤器接收所有非 ignore 普通会话，最高优先级准备钩子先豁免宿主已匹配的指令，再执行丢弃或抑制原生 LLM；监听保留原生消息持久化和其他插件处理器，移除原生空 @ 等待与群聊模型触发，观察只入库，不认领回复或提交调度。主模型请求钩子也阻断监听会话的普通请求，但先豁免插件指令请求。内部调度事件在范围不再 active 时立即失效，不重复记录。Recorder 关闭时范围策略不接管事件。
+会话策略由 `Settings.scope_action()` 统一返回 `active`／`ignore`／`listen`／`observe`／`drop`。`scope.enabled` 为总开关，关闭直接返回 ignore。为保留已有配置，`all_sessions=false/true` 在新版界面分别表示白名单／黑名单模式；`sessions`／`manual_sessions` 和 `blacklist_sessions`／`blacklist_manual_sessions` 保留为名单来源。`outside_action` 用于白名单未命中，`blacklist_action` 用于黑名单命中，新配置均默认 observe。`rules` 使用宿主 template_list 保存 `{mode, umo, action}`，可独立加入会话并覆盖对应名单策略；精确 UMO 优先于共享群路由，同一模式同一 UMO 不允许重复规则。加载／保存时校验 UMO 字符串并裁剪首尾空白。
 
-插件指令按已激活处理器中的 CommandFilter／CommandGroupFilter／RegexFilter 识别，不能仅凭可伪造的前缀绕过丢弃；`/hum` 管理入口仍按原生管理员校验。指令执行与其主动发起的 LLM 请求不受会话门控，是否入库继续由 Recorder 的指令过滤设置决定。WebUI 使用内嵌白／黑名单卡片并随全部会话开关切换，切换不清除另一名单；两份候选列表均由宿主会话和已配置 UMO 刷新。数据筛选候选及空记录的管理查询将监听会话视为启用了记录。
+`selected()` 仅表示正常回复资格，主动发言和调度沿用它。摘要循环单独允许 active 和 observe，总开关关闭时退出；listen 只入库，observe 入库并整理，两者都不认领回复、提交调度或生成 Controller 决策。最高优先级准备钩子先豁免已匹配指令，再执行丢弃或抑制原生 LLM。主模型请求钩子也阻断 listen／observe／drop 的普通请求，但先豁免指令请求。内部调度事件在范围不再 active 时立即失效。Recorder 关闭时范围策略不接管事件。
+
+插件指令按已激活处理器中的 CommandFilter／CommandGroupFilter／RegexFilter 识别，不能仅凭前缀绕过丢弃；`/hum` 管理入口仍按自身开关和原生管理员校验。指令执行与其主动发起的 LLM 请求不受会话门控，已匹配指令不改写原生 LLM 标记、不经过机器人门控；关闭指令过滤时，允许在 active／listen／observe 会话记录命令输入。WebUI 使用嵌套名单卡片、复合选择弹窗和逐会话策略列表，模式切换不清除另一名单。图标通过适配器注册元数据及 AstrBot 文件令牌服务获取，按资源路径缓存并在过期后重新注册；无资源或加载失败回退通用图标，不解析宿主构建文件。配置接口返回名称、UMO、实际适配器类型与支持状态，其他平台可显示但不扩大运行时支持范围。数据筛选和空记录管理查询将监听、旁观会话视为启用了记录。回归覆盖实际 WakingCheck 到 `/hum info` 的处理器执行链路，而不只测试过滤器返回值。
 
 `filter_commands` 统一控制插件入库和接管的 LLM 输入。识别注册指令与配置前缀，阻止未注册前缀指令回落到默认 LLM；原始入库过滤与后续观察筛选同时生效，不重写已有日记。
 

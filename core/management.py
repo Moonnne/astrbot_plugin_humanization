@@ -134,7 +134,7 @@ class Management:
         if not data["message_count"] and not data["diary_count"]:
             enabled = settings.recorder["enabled"] and settings.scope_action(
                 str(route), query_umo
-            ) in ("active", "listen")
+            ) in ("active", "listen", "observe")
             status = (
                 ("指定会话无记录" if umo else "当前会话无记录")
                 if enabled

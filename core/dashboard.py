@@ -4,11 +4,15 @@ import asyncio
 import copy
 import difflib
 import hashlib
+import inspect
 import json
 from contextlib import AsyncExitStack
 from datetime import date, datetime
+from pathlib import Path
 
 from astrbot.api.web import error_response, json_response, request
+from astrbot.core import file_token_service
+from astrbot.core.platform.register import platform_cls_map, platform_registry
 from astrbot.dashboard.services.config_service import validate_config
 
 from .settings import Settings
@@ -28,6 +32,7 @@ class Dashboard:
         self.sql = self.database.sql
         self.config_lock = asyncio.Lock()
         self.routes = []
+        self.logo_tokens = {}
 
     def register(self):
         for endpoint, handler, method in (
@@ -95,10 +100,12 @@ class Dashboard:
             + configured["blacklist_sessions"]
             + configured["blacklist_manual_sessions"]
         )
+        sessions.update(rule["umo"] for rule in configured["rules"])
         sessions = {
             umo
             for umo in sessions
-            if self.runtime.settings.scope_action(umo, umo) in ("active", "listen")
+            if self.runtime.settings.scope_action(umo, umo)
+            in ("active", "listen", "observe")
         }
         return json_response(
             {
@@ -279,6 +286,56 @@ class Dashboard:
             return denied
         schema = copy.deepcopy(self.plugin.config.schema)
         sessions = await self.runtime.adapter.session_options(resolve_groups=True)
+        selectable = []
+        adapters = {}
+        for umo, name in sessions.items():
+            if ":GroupMessage:" not in umo and ":FriendMessage:" not in umo:
+                continue
+            instance_id = umo.split(":", 1)[0]
+            platform = self.runtime.context.get_platform_inst(instance_id)
+            adapter_type = platform.meta().name if platform is not None else ""
+            if adapter_type not in adapters:
+                metadata = next(
+                    (p for p in platform_registry if p.name == adapter_type), None
+                )
+                logo_url = ""
+                adapter_cls = platform_cls_map.get(adapter_type)
+                if metadata and metadata.logo_path and adapter_cls:
+                    try:
+                        path = (
+                            Path(inspect.getfile(adapter_cls)).parent
+                            / metadata.logo_path
+                        )
+                        key = str(path)
+                        token = self.logo_tokens.get(key)
+                        if not token or await file_token_service.check_token_expired(
+                            token
+                        ):
+                            token = await file_token_service.register_file(
+                                str(path), timeout=3600, single_use=False
+                            )
+                            self.logo_tokens[key] = token
+                        logo_url = f"/api/file/{token}"
+                    except (OSError, TypeError, ValueError):
+                        self.runtime.log.debug(
+                            "dashboard.platform_logo.unavailable", adapter=adapter_type
+                        )
+                adapters[adapter_type] = {
+                    "adapter_type": adapter_type,
+                    "adapter_name": (metadata.adapter_display_name or adapter_type)
+                    if metadata
+                    else adapter_type,
+                    "logo_url": logo_url,
+                    "supported": adapter_type == "aiocqhttp" if adapter_type else None,
+                }
+            selectable.append(
+                {
+                    "value": umo,
+                    "title": name,
+                    "platform_id": instance_id,
+                    **adapters[adapter_type],
+                }
+            )
         for key in ("sessions", "blacklist_sessions"):
             schema["scope"]["items"][key].update(
                 options=list(sessions), labels=list(sessions.values())
@@ -310,6 +367,7 @@ class Dashboard:
                 },
                 "reset_confirmation": self.runtime.admin.all_confirmation,
                 "choices": {
+                    "sessions": selectable,
                     "select_provider": providers,
                     "select_persona": personas,
                     "select_tools": tools,

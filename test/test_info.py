@@ -177,6 +177,7 @@ async def test_explicit_private_and_other_platform_info_use_the_target_scope(nam
 async def test_empty_info_distinguishes_unselected_scope_and_selected_empty_scope(
     named, enabled, specified
 ):
+    named.settings.scope["outside_action"] = "ignore"
     named.settings.scope["sessions"] = ["onebot:GroupMessage:123"] if enabled else []
     caller = admin_event("/hum info")
     response = await named.admin.info(

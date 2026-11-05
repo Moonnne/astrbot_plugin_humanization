@@ -11,7 +11,9 @@ from urllib.parse import urlencode
 import pytest
 from controller_helpers import plan_data
 from diary_helpers import topic_change
+from humanization_test.core import dashboard as dashboard_module
 from humanization_test.core.dashboard import Dashboard
+from humanization_test.core.settings import Settings
 from starlette.requests import Request
 from test_host_contract import Event
 from test_host_contract import plugin as plugin
@@ -202,6 +204,7 @@ async def test_category_specific_filters(dashboard, category, matching, excluded
 
 
 async def test_session_choices_use_enabled_range_and_stats_accept_umo(dashboard):
+    dashboard.runtime.settings.scope["outside_action"] = "ignore"
     dashboard.runtime.settings.scope["manual_sessions"] = ["onebot:FriendMessage:456"]
     _, result = await invoke(
         dashboard.overview, query={"scope": "onebot:GroupMessage:123"}
@@ -346,6 +349,100 @@ async def test_config_validation_revision_and_native_reload(dashboard):
         Path(dashboard.plugin.config.config_path).read_text(encoding="utf-8-sig")
     )
     assert saved["recorder"]["retention"] == 600
+
+
+async def test_session_icons_use_registered_assets_and_refresh_tokens(
+    dashboard, monkeypatch
+):
+    dashboard.runtime.adapter.session_options = AsyncMock(
+        return_value={
+            "qq:GroupMessage:1": "QQ group",
+            "other:FriendMessage:2": "Other chat",
+            "offline:FriendMessage:3": "Offline",
+        }
+    )
+    dashboard.runtime.context.get_platform_inst = lambda pid: (
+        None
+        if pid == "offline"
+        else SimpleNamespace(
+            meta=lambda: SimpleNamespace(name="aiocqhttp" if pid == "qq" else "custom")
+        )
+    )
+    monkeypatch.setattr(
+        dashboard_module,
+        "platform_registry",
+        [
+            SimpleNamespace(
+                name="custom",
+                adapter_display_name="Custom Adapter",
+                logo_path="logo.svg",
+            )
+        ],
+    )
+    monkeypatch.setattr(dashboard_module, "platform_cls_map", {"custom": Dashboard})
+    register = AsyncMock(side_effect=["first-token", "new-token"])
+    expired = AsyncMock(return_value=False)
+    monkeypatch.setattr(dashboard_module.file_token_service, "register_file", register)
+    monkeypatch.setattr(
+        dashboard_module.file_token_service, "check_token_expired", expired
+    )
+    _, data = await invoke(dashboard.settings)
+    items = data["choices"]["sessions"]
+    assert len(items) == 3
+    assert items[0]["supported"] is True and items[0]["logo_url"] == ""
+    assert (
+        items[1]["supported"] is False and items[1]["adapter_name"] == "Custom Adapter"
+    )
+    assert items[1]["logo_url"] == "/api/file/first-token"
+    assert items[2]["supported"] is None and items[2]["adapter_type"] == ""
+    await invoke(dashboard.settings)
+    assert register.await_count == 1
+    expired.return_value = True
+    _, data = await invoke(dashboard.settings)
+    assert data["choices"]["sessions"][1]["logo_url"] == "/api/file/new-token"
+    register.side_effect = FileNotFoundError
+    _, data = await invoke(dashboard.settings)
+    assert data["choices"]["sessions"][1]["logo_url"] == ""
+
+
+async def test_scope_config_roundtrip_preserves_routes_and_independent_rules(dashboard):
+    _, settings = await invoke(dashboard.settings)
+    edited = copy.deepcopy(settings["config"])
+    edited["scope"].update(
+        sessions=[" onebot:GroupMessage:123 "],
+        rules=[
+            {
+                "__template_key": "session",
+                "mode": "whitelist",
+                "umo": "onebot:FriendMessage:456",
+                "action": "observe",
+            },
+            {
+                "__template_key": "session",
+                "mode": "blacklist",
+                "umo": "onebot:GroupMessage:123",
+                "action": "drop",
+            },
+        ],
+    )
+    status, _ = await invoke(
+        dashboard.save_settings,
+        body={"config": edited, "revision": settings["revision"]},
+    )
+    assert status == 200
+    stored = json.loads(
+        Path(dashboard.plugin.config.config_path).read_text(encoding="utf-8-sig")
+    )
+    policy = Settings(stored)
+    group = "onebot:GroupMessage:123"
+    assert policy.scope["sessions"] == [group]
+    assert policy.scope_action(group, group) == "active"
+    assert (
+        policy.scope_action("onebot:FriendMessage:456", "onebot:FriendMessage:456")
+        == "observe"
+    )
+    policy.scope["all_sessions"] = True
+    assert policy.scope_action(group, group) == "drop"
 
 
 async def test_registration_cleanup_preserves_other_plugins(dashboard):

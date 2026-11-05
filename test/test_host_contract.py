@@ -102,6 +102,7 @@ async def replay(plugin, event, generator):
 
 
 async def test_scope_filter_does_not_wake_unselected_event(plugin):
+    plugin.settings.scope["outside_action"] = "ignore"
     event = Event()
     assert ScopeFilter().filter(event, {})
     event.session.session_id = "other"
@@ -117,7 +118,7 @@ async def test_command_filter_is_default_and_does_not_claim(plugin):
         "activated_handlers", [SimpleNamespace(event_filters=[CommandFilter("status")])]
     )
     await consume(plugin.observe(event))
-    assert event.call_llm
+    assert not event.call_llm
     assert not await plugin.storage.rows("SELECT * FROM messages")
 
 

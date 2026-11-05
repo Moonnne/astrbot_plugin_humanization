@@ -30,7 +30,7 @@ def set_policy(settings, all_sessions, action):
 
 
 @pytest.mark.parametrize("all_sessions", [False, True])
-@pytest.mark.parametrize("action", ["ignore", "listen", "drop"])
+@pytest.mark.parametrize("action", ["ignore", "listen", "observe", "drop"])
 @pytest.mark.parametrize("private", [False, True])
 def test_scope_policy_matches_exact_shared_and_manual_routes(
     config, all_sessions, action, private
@@ -63,7 +63,7 @@ def test_scope_rejects_unknown_action(config, key):
 
 
 @pytest.mark.parametrize("all_sessions", [False, True])
-@pytest.mark.parametrize("action", ["ignore", "listen", "drop"])
+@pytest.mark.parametrize("action", ["ignore", "listen", "observe", "drop"])
 @pytest.mark.parametrize("controller_enabled", [False, True])
 async def test_ordinary_scope_actions_never_fall_through_to_models(
     plugin, all_sessions, action, controller_enabled
@@ -83,10 +83,10 @@ async def test_ordinary_scope_actions_never_fall_through_to_models(
             await consume(plugin.observe(event))
             assert await consume(plugin.participate(event)) == []
     assert await plugin.storage.message_count(plugin.adapter.snapshot(event).scope) == (
-        1 if action == "listen" else 0
+        1 if action in ("listen", "observe") else 0
     )
     assert event.is_stopped() is (action == "drop")
-    if action == "listen":
+    if action in ("listen", "observe"):
         assert event.call_llm and not event.get_extra("humanization_claimed")
         await plugin.inject(event, ProviderRequest(prompt="unexpected native request"))
         assert event.is_stopped()
@@ -99,7 +99,7 @@ async def test_ordinary_scope_actions_never_fall_through_to_models(
 
 
 @pytest.mark.parametrize("all_sessions", [False, True])
-@pytest.mark.parametrize("action", ["ignore", "listen", "drop"])
+@pytest.mark.parametrize("action", ["ignore", "listen", "observe", "drop"])
 async def test_scope_never_blocks_matched_plugin_commands_or_their_llm_requests(
     plugin, monkeypatch, all_sessions, action
 ):
@@ -231,3 +231,73 @@ async def test_disabled_recorder_disables_scope_interception(plugin):
     set_policy(plugin.settings, True, "drop")
     plugin.settings.recorder["enabled"] = False
     assert not ScopeFilter().filter(Event(), {})
+
+
+async def test_matched_command_does_not_change_native_llm_flag(plugin):
+    event = Event("demo")
+    event.set_extra(
+        "activated_handlers", [SimpleNamespace(event_filters=[CommandFilter("demo")])]
+    )
+    plugin.adapter.filter_group_robot = AsyncMock(return_value=False)
+    await consume(plugin.observe(event))
+    assert not event.call_llm
+    plugin.adapter.filter_group_robot.assert_not_awaited()
+
+
+@pytest.mark.parametrize("black", [False, True])
+@pytest.mark.parametrize("action", ["active", "ignore", "listen", "observe", "drop"])
+def test_per_session_policy_and_master_switch(config, black, action):
+    settings = Settings(config)
+    settings.scope.update(
+        all_sessions=black,
+        rules=[
+            {
+                "mode": "blacklist" if black else "whitelist",
+                "umo": "onebot:GroupMessage:123",
+                "action": action,
+            }
+        ],
+    )
+    assert (
+        settings.scope_action("onebot:GroupMessage:42_123", "onebot:GroupMessage:123")
+        == action
+    )
+    assert settings.scope_action(
+        "onebot:FriendMessage:42", "onebot:FriendMessage:42"
+    ) == ("active" if black else "observe")
+    settings.scope["enabled"] = False
+    assert (
+        settings.scope_action("onebot:GroupMessage:123", "onebot:GroupMessage:123")
+        == "ignore"
+    )
+
+
+def test_scope_trims_manual_umo_and_rejects_objects(config):
+    config["scope"]["manual_sessions"] = [" onebot:GroupMessage:123 "]
+    settings = Settings(config)
+    assert settings.selected("onebot:GroupMessage:123", "onebot:GroupMessage:123")
+    config["scope"]["sessions"] = [
+        {"title": "Group", "value": "onebot:GroupMessage:123"}
+    ]
+    with pytest.raises(ValueError, match="must be strings"):
+        Settings(config)
+
+
+@pytest.mark.parametrize("action", ["active", "listen", "observe", "ignore", "drop"])
+async def test_summary_work_is_separate_from_reply_scope(plugin, action):
+    event = Event()
+    message = plugin.adapter.snapshot(event)
+    await plugin.storage.append(message)
+    plugin.settings.recorder.update(summary_provider="summary", summary_every=1)
+    plugin.settings.scope["rules"] = [
+        {"mode": "whitelist", "umo": message.umo, "action": action}
+    ]
+    plugin.summarizer.summarize = AsyncMock()
+    await plugin.summarizer.tick()
+    assert plugin.summarizer.summarize.await_count == (
+        1 if action in ("active", "observe") else 0
+    )
+    plugin.settings.scope["enabled"] = False
+    plugin.summarizer.summarize.reset_mock()
+    await plugin.summarizer.tick()
+    plugin.summarizer.summarize.assert_not_awaited()

@@ -41,8 +41,43 @@ class Settings:
         self.proactive = config["proactive"]
         self.prompts = config["prompts"]
         for key in ("outside_action", "blacklist_action"):
-            if self.scope[key] not in ("ignore", "listen", "drop"):
+            if self.scope[key] not in ("ignore", "listen", "observe", "drop"):
                 raise ValueError(f"Unknown scope action: {key}")
+        for key in (
+            "sessions",
+            "manual_sessions",
+            "blacklist_sessions",
+            "blacklist_manual_sessions",
+        ):
+            values = self.scope[key]
+            if not isinstance(values, list) or any(
+                not isinstance(value, str) for value in values
+            ):
+                raise ValueError(f"Session UMOs must be strings: {key}")
+            self.scope[key] = list(
+                dict.fromkeys(value.strip() for value in values if value.strip())
+            )
+            for umo in self.scope[key]:
+                if not re.fullmatch(
+                    r"[^:\s]+:(GroupMessage|FriendMessage):[^:\s]+", umo
+                ):
+                    raise ValueError(f"Invalid session UMO: {umo}")
+        seen = set()
+        for rule in self.scope["rules"]:
+            if rule.get("mode") not in ("whitelist", "blacklist") or rule.get(
+                "action"
+            ) not in ("active", "ignore", "listen", "observe", "drop"):
+                raise ValueError("Unknown session rule mode or action")
+            umo = rule.get("umo", "")
+            if not isinstance(umo, str) or not re.fullmatch(
+                r"[^:\s]+:(GroupMessage|FriendMessage):[^:\s]+", umo.strip()
+            ):
+                raise ValueError("Invalid session rule UMO")
+            rule["umo"] = umo.strip()
+            identity = (rule["mode"], rule["umo"])
+            if identity in seen:
+                raise ValueError("Duplicate session rule")
+            seen.add(identity)
         if self.controller["mode"] not in ("probability", "scheduled"):
             raise ValueError("Unknown Controller mode")
         if not self.controller["robot_name"].strip():
@@ -134,25 +169,27 @@ class Settings:
             group_umo: The canonical group route, or the same UMO for private chats.
 
         Returns:
-            active, ignore, listen or drop; matched plugin commands are exempted
+            active, ignore, listen, observe or drop; matched commands are exempted
             by the event entry points, independently of this route policy.
         """
-        if self.scope["all_sessions"]:
-            listed = (
-                self.scope["blacklist_sessions"]
-                + self.scope["blacklist_manual_sessions"]
-            )
-            return (
-                self.scope["blacklist_action"]
-                if umo in listed or group_umo in listed
-                else "active"
-            )
-        listed = self.scope["sessions"] + self.scope["manual_sessions"]
-        return (
-            "active"
-            if umo in listed or group_umo in listed
-            else self.scope["outside_action"]
+        if not self.scope["enabled"]:
+            return "ignore"
+        black = self.scope["all_sessions"]
+        mode = "blacklist" if black else "whitelist"
+        listed = (
+            self.scope["blacklist_sessions"] + self.scope["blacklist_manual_sessions"]
+            if black
+            else self.scope["sessions"] + self.scope["manual_sessions"]
         )
+        rules = {
+            r["umo"]: r["action"] for r in self.scope["rules"] if r["mode"] == mode
+        }
+        for route in (umo, group_umo):
+            if route in rules:
+                return rules[route]
+            if route in listed:
+                return self.scope["blacklist_action"] if black else "active"
+        return "active" if black else self.scope["outside_action"]
 
     def is_command_text(self, text: str) -> bool:
         return any(

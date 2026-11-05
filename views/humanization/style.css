@@ -23943,6 +23943,22 @@ th[data-v-fa463a85] { position: relative; padding: 0 16px; white-space: nowrap; 
 .persona-preview[data-v-0b84bc79] { font: inherit; font-size: 0.82rem; max-height: 200px; overflow: auto; overflow-wrap: anywhere; white-space: pre-wrap;
 }
 
+.platform-icon[data-v-edd25b03] { object-fit:contain; flex-shrink:0;
+}
+
+.scope-entry-content[data-v-91a718d6] { display:grid; grid-template-columns:minmax(0,1fr) 130px auto; gap:12px; align-items:center;
+}
+.scope-entry-name[data-v-91a718d6] { min-width:0;
+}
+.scope-entry + .scope-entry[data-v-91a718d6] { border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity));
+}
+@media (max-width:600px) {
+.scope-entry-content[data-v-91a718d6] { grid-template-columns:minmax(0,1fr) auto;
+}
+.scope-entry-name[data-v-91a718d6] { grid-column:1 / -1;
+}
+}
+
 .compare-body[data-v-50ed991a] { overflow: auto;
 }
 .compare-columns[data-v-50ed991a] { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; min-width: 560px;
