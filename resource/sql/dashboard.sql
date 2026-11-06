@@ -12,7 +12,11 @@ SELECT
  (SELECT COUNT(*) FROM controller_decisions WHERE (:scope='' OR scope IN (SELECT value FROM json_each(:scopes)))
    AND json_extract(decision_json,'$.reply')=1) AS planned_replies,
  (SELECT COUNT(*) FROM controller_decisions WHERE (:scope='' OR scope IN (SELECT value FROM json_each(:scopes)))
-   AND outcome='processed') AS processed;
+   AND outcome='processed') AS processed,
+ (SELECT COUNT(*) FROM message_resources r JOIN messages m ON m.id=r.message_row
+   WHERE :scope='' OR m.scope IN (SELECT value FROM json_each(:scopes))) AS resources,
+ (SELECT COALESCE(SUM(r.size),0) FROM message_resources r JOIN messages m ON m.id=r.message_row
+   WHERE :scope='' OR m.scope IN (SELECT value FROM json_each(:scopes))) AS resource_bytes;
 
 -- name: messages
 SELECT *, sent_at AS timestamp, text AS headline, direction AS kind,

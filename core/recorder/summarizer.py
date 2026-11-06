@@ -39,6 +39,8 @@ class Summarizer:
                     "observe",
                 ):
                     continue
+                if getattr(self.storage, "media", None) and await self.storage.media.waiting(session["scope"]):
+                    continue
                 pending = await self.storage.pending_messages(
                     session["scope"],
                     session["cursor"],

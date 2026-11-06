@@ -1,7 +1,7 @@
 <script setup>
 defineProps({ stats: Object });
 defineEmits(['browse']);
-const cards = [['sessions','会话',null],['messages','聊天记录','messages'],['topics','话题','topics'],['diaries','日记日期','diaries'],['decisions','近期决策','decisions'],['planned_replies','决定回复','decisions']];
+const cards = [['sessions','会话',null],['messages','聊天记录','messages'],['topics','话题','topics'],['diaries','日记日期','diaries'],['decisions','近期决策','decisions'],['planned_replies','决定回复','decisions'],['resources','媒体与链接','messages'],['resource_bytes','媒体大小（字节）',null]];
 </script>
 <template>
   <v-row>

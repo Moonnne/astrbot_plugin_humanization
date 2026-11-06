@@ -448,7 +448,7 @@ async def test_scope_config_roundtrip_preserves_routes_and_independent_rules(das
 async def test_registration_cleanup_preserves_other_plugins(dashboard):
     dashboard.register()
     apis = dashboard.plugin.context.registered_web_apis
-    assert len(apis) == 7
+    assert len(apis) == 8
     other = ("/other/ping", object(), ["GET"], "ping")
     apis.append(other)
     dashboard.close()

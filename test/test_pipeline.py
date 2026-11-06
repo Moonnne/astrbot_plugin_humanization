@@ -19,7 +19,13 @@ from astrbot.core.provider.entities import LLMResponse, ProviderRequest
 from astrbot.core.star.session_llm_manager import SessionServiceManager
 
 
-async def test_media_rows_contain_only_resource_tags(plugin):
+async def test_media_rows_reference_resources_without_source_urls(plugin, monkeypatch):
+    def copy(source, target):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"fixture")
+        return 7
+
+    monkeypatch.setattr(plugin.media, "copy", copy)
     event = Event()
     event.message_obj.message = [
         Plain("看一下"),
@@ -29,7 +35,9 @@ async def test_media_rows_contain_only_resource_tags(plugin):
     ]
     await consume(plugin.observe(event))
     row = (await plugin.storage.rows("SELECT * FROM messages"))[0]
-    assert row["text"] == "看一下[image][video][file]"
+    assert row["text"].startswith("看一下[image:")
+    assert "[video:" in row["text"] and "[file:" in row["text"]
+    assert "private.pdf" in row["text"]
     assert "private" not in row["segments"]
     assert "https" not in row["segments"]
 

@@ -38,6 +38,7 @@ class Dashboard:
         for endpoint, handler, method in (
             ("overview", self.overview, "GET"),
             ("records", self.records, "GET"),
+            ("resource", self.resource, "GET"),
             ("records/delete", self.delete, "POST"),
             ("settings", self.settings, "GET"),
             ("settings/save", self.save_settings, "POST"),
@@ -69,6 +70,26 @@ class Dashboard:
         return hashlib.sha256(
             json.dumps(config, sort_keys=True, ensure_ascii=False).encode("utf-8")
         ).hexdigest()
+
+    async def resource(self):
+        """Issue a short-lived native file token only after dashboard authentication."""
+        if denied := self.authorize():
+            return denied
+        rows = await self.runtime.storage.rows(
+            self.sql["resources.get"], (request.query.get("id", ""),)
+        )
+        if not rows or not rows[0]["path"]:
+            return error_response("资源不存在或未保存", status_code=404)
+        row = rows[0]
+        if row["kind"] not in ("image", "record", "video"):
+            return error_response("此类型仅提供元数据", status_code=400)
+        path = self.runtime.media.path(row["path"])
+        if not path.is_file():
+            return error_response("文件已删除", status_code=404)
+        token = await file_token_service.register_file(
+            str(path), timeout=60, single_use=False
+        )
+        return json_response({"url": f"/api/file/{token}", "kind": row["kind"]})
 
     async def overview(self):
         if denied := self.authorize():
@@ -216,6 +237,12 @@ class Dashboard:
                     )
                     for topic in row["topics"]:
                         topic["interact"] = json.loads(topic["interact"])
+                if category == "messages":
+                    row["resources"] = await tx.rows(
+                        self.sql["resources.for_message"], (row["id"],)
+                    )
+                    for resource in row["resources"]:
+                        resource.pop("source", None)
         return json_response({"items": rows, "total": total})
 
     async def delete(self):
@@ -279,6 +306,7 @@ class Dashboard:
         self.runtime.log.info(
             "dashboard.records.deleted", category=category, count=deleted
         )
+        await self.runtime.media.cleanup()
         return json_response({"deleted": deleted})
 
     async def settings(self):

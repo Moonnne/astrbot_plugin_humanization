@@ -6,7 +6,7 @@ const _sfc_main$d = {
   props: { stats: Object },
   emits: ["browse"],
   setup(__props) {
-    const cards = [["sessions", "会话", null], ["messages", "聊天记录", "messages"], ["topics", "话题", "topics"], ["diaries", "日记日期", "diaries"], ["decisions", "近期决策", "decisions"], ["planned_replies", "决定回复", "decisions"]];
+    const cards = [["sessions", "会话", null], ["messages", "聊天记录", "messages"], ["topics", "话题", "topics"], ["diaries", "日记日期", "diaries"], ["decisions", "近期决策", "decisions"], ["planned_replies", "决定回复", "decisions"], ["resources", "媒体与链接", "messages"], ["resource_bytes", "媒体大小（字节）", null]];
     return (_ctx, _cache) => {
       const _component_v_card = resolveComponent("v-card");
       const _component_v_col = resolveComponent("v-col");
@@ -533,7 +533,7 @@ const _sfc_main$a = /* @__PURE__ */ Object.assign({ inheritAttrs: false }, {
   }
 });
 const ResizableHeaders = /* @__PURE__ */ _export_sfc(_sfc_main$a, [["__scopeId", "data-v-fa463a85"]]);
-const _withScopeId$6 = (n) => (pushScopeId("data-v-c20e06de"), n = n(), popScopeId(), n);
+const _withScopeId$6 = (n) => (pushScopeId("data-v-e2e2d4f8"), n = n(), popScopeId(), n);
 const _hoisted_1$8 = { class: "d-flex align-center flex-wrap ga-3 mb-4" };
 const _hoisted_2$7 = { class: "text-body-2 text-medium-emphasis flex-grow-1" };
 const _hoisted_3$7 = { class: "records-layout" };
@@ -557,15 +557,19 @@ const _hoisted_14 = {
   key: 3,
   class: "text-caption"
 };
-const _hoisted_15 = {
+const _hoisted_15 = { class: "d-flex flex-wrap ga-2 mb-3" };
+const _hoisted_16 = ["src"];
+const _hoisted_17 = ["src"];
+const _hoisted_18 = ["src"];
+const _hoisted_19 = {
   key: 0,
   class: "mt-3"
 };
-const _hoisted_16 = {
+const _hoisted_20 = {
   key: 1,
   class: "mt-3"
 };
-const _hoisted_17 = /* @__PURE__ */ _withScopeId$6(() => /* @__PURE__ */ createBaseVNode("p", { class: "mt-3" }, "仅处理插件数据，不清除 AstrBot 原生对话。正在回复或整理时会拒绝删除，请稍后重试。", -1));
+const _hoisted_21 = /* @__PURE__ */ _withScopeId$6(() => /* @__PURE__ */ createBaseVNode("p", { class: "mt-3" }, "仅处理插件数据，不清除 AstrBot 原生对话。正在回复或整理时会拒绝删除，请稍后重试。", -1));
 const _sfc_main$9 = {
   __name: "Records",
   props: { category: String, sessions: Array, refresh: Number, timezone: String },
@@ -592,6 +596,17 @@ const _sfc_main$9 = {
     });
     const rows = ref([]), total = ref(0), selected = ref([]), loading = ref(false), error = ref("");
     const detail = ref(null), confirm = ref(false), deleting = ref(false), success = ref("");
+    const mediaPreview = ref(null);
+    watch(detail, () => {
+      mediaPreview.value = null;
+    });
+    async function preview(resource) {
+      try {
+        mediaPreview.value = await bridge2.apiGet("resource", { id: resource.id });
+      } catch (e) {
+        error.value = e.message;
+      }
+    }
     let generation = 0, timer;
     const titles = { messages: "聊天记录", decisions: "最近反应", topics: "话题", diaries: "日记" };
     const headers = computed(() => [
@@ -863,9 +878,41 @@ ${item.conversation}`
                   _: 1
                 }),
                 createVNode(_component_v_card_text, null, {
-                  default: withCtx(() => [
-                    createVNode(_sfc_main$c, { value: detailFields.value }, null, 8, ["value"])
-                  ]),
+                  default: withCtx(() => {
+                    var _a, _b, _c, _d;
+                    return [
+                      createBaseVNode("div", _hoisted_15, [
+                        (openBlock(true), createElementBlock(Fragment, null, renderList((((_a = detail.value) == null ? void 0 : _a.resources) || []).filter((r) => r.path && ["image", "record", "video"].includes(r.kind)), (resource) => {
+                          return openBlock(), createBlock(_component_v_btn, {
+                            key: resource.id,
+                            size: "small",
+                            onClick: ($event) => preview(resource)
+                          }, {
+                            default: withCtx(() => [
+                              createTextVNode("查看 " + toDisplayString(resource.name), 1)
+                            ]),
+                            _: 2
+                          }, 1032, ["onClick"]);
+                        }), 128))
+                      ]),
+                      ((_b = mediaPreview.value) == null ? void 0 : _b.kind) === "image" ? (openBlock(), createElementBlock("img", {
+                        key: 0,
+                        src: mediaPreview.value.url,
+                        alt: "聊天图片",
+                        style: { "max-width": "100%", "max-height": "420px" }
+                      }, null, 8, _hoisted_16)) : ((_c = mediaPreview.value) == null ? void 0 : _c.kind) === "record" ? (openBlock(), createElementBlock("audio", {
+                        key: 1,
+                        src: mediaPreview.value.url,
+                        controls: ""
+                      }, null, 8, _hoisted_17)) : ((_d = mediaPreview.value) == null ? void 0 : _d.kind) === "video" ? (openBlock(), createElementBlock("video", {
+                        key: 2,
+                        src: mediaPreview.value.url,
+                        controls: "",
+                        style: { "max-width": "100%", "max-height": "420px" }
+                      }, null, 8, _hoisted_18)) : createCommentVNode("", true),
+                      createVNode(_sfc_main$c, { value: detailFields.value }, null, 8, ["value"])
+                    ];
+                  }),
                   _: 1
                 }),
                 createVNode(_component_v_card_actions, null, {
@@ -906,9 +953,9 @@ ${item.conversation}`
                 createVNode(_component_v_card_text, null, {
                   default: withCtx(() => [
                     createTextVNode(" 将永久删除所选 " + toDisplayString(selected.value.length) + " 条" + toDisplayString(titles[__props.category]) + "。 ", 1),
-                    __props.category === "diaries" ? (openBlock(), createElementBlock("p", _hoisted_15, "这些日期下的话题会一并删除。")) : createCommentVNode("", true),
-                    __props.category === "messages" ? (openBlock(), createElementBlock("p", _hoisted_16, "已有日记仍保留，消息累计序号不回退。当前群聊消息不足门槛时，会重新进入观察期。")) : createCommentVNode("", true),
-                    _hoisted_17
+                    __props.category === "diaries" ? (openBlock(), createElementBlock("p", _hoisted_19, "这些日期下的话题会一并删除。")) : createCommentVNode("", true),
+                    __props.category === "messages" ? (openBlock(), createElementBlock("p", _hoisted_20, "关联媒体文件及转述记录一并删除。已有日记仍保留，消息累计序号不回退。文件被占用时后台继续清理。当前群聊消息不足门槛时，会重新进入观察期。")) : createCommentVNode("", true),
+                    _hoisted_21
                   ]),
                   _: 1
                 }),
@@ -947,7 +994,7 @@ ${item.conversation}`
     };
   }
 };
-const Records = /* @__PURE__ */ _export_sfc(_sfc_main$9, [["__scopeId", "data-v-c20e06de"]]);
+const Records = /* @__PURE__ */ _export_sfc(_sfc_main$9, [["__scopeId", "data-v-e2e2d4f8"]]);
 const _withScopeId$5 = (n) => (pushScopeId("data-v-0b84bc79"), n = n(), popScopeId(), n);
 const _hoisted_1$7 = { class: "resource-field" };
 const _hoisted_2$6 = { class: "resource-row" };

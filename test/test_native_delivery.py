@@ -314,7 +314,9 @@ async def test_native_media_conversion_and_recorder_tags(
     assert isinstance(event.sent[0].chain[0], component)
     assert len(native.hooks) == 1
     row = (await plugin.storage.rows("SELECT * FROM messages WHERE direction='out'"))[0]
-    assert row["text"] == f"[{tag}]"
+    assert row["text"].startswith(f"[{tag}:")
+    if mode == "tts":
+        assert "这是" in row["text"]
     assert "voice.wav" not in row["segments"] and "image.png" not in row["segments"]
 
 

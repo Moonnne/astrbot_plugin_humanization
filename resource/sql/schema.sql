@@ -58,3 +58,17 @@ CREATE INDEX IF NOT EXISTS controller_decisions_recent
 CREATE INDEX IF NOT EXISTS diary_topics_updated
     ON diary_topics(scope,updated_at DESC,id DESC);
 PRAGMA user_version=3;
+CREATE TABLE IF NOT EXISTS message_resources (
+    id TEXT PRIMARY KEY, message_row INTEGER NOT NULL, position INTEGER NOT NULL,
+    kind TEXT NOT NULL, name TEXT NOT NULL, path TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL, updated_at REAL, status TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '', provider TEXT NOT NULL DEFAULT '', mime TEXT NOT NULL DEFAULT '',
+    UNIQUE(message_row,position),
+    FOREIGN KEY(message_row) REFERENCES messages(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS resource_cleanup(path TEXT PRIMARY KEY);
+CREATE TRIGGER IF NOT EXISTS resource_delete AFTER DELETE ON message_resources
+WHEN OLD.path != '' BEGIN
+    INSERT OR IGNORE INTO resource_cleanup(path) VALUES(OLD.path);
+END;

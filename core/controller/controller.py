@@ -32,7 +32,10 @@ class Controller:
         mentioned: bool,
         idle: bool = False,
         scheduled=None,
+        tools=None,
     ) -> Decision:
+        if getattr(self.storage, "media", None):
+            await self.storage.media.wait(message.scope)
         cfg = self.settings.controller
         session = await self.storage.session(message.scope)
         now = datetime.now(self.settings.timezone)
@@ -125,6 +128,7 @@ class Controller:
             payload = json.dumps(
                 {
                     "context": context,
+                    "available_tools": tools or [],
                     "recent_decisions": history,
                     "now": now.isoformat(),
                     "trigger": "idle" if idle else "message",

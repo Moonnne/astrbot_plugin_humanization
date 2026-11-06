@@ -5,7 +5,7 @@ import time
 from dataclasses import replace
 from datetime import datetime
 
-from astrbot.api.message_components import At, Plain
+from astrbot.api.message_components import At, Plain, Record
 
 from ...models.delivery import ReplayResult
 
@@ -40,6 +40,9 @@ class Delivery:
             elif isinstance(part, At):
                 rendered.append(f"[@{part.qq}]")
                 segments.append({"type": "at", "id": str(part.qq)})
+            elif isinstance(part, Record) and part.text:
+                rendered.append(part.text)
+                segments.append({"type": "record", "text": part.text})
             else:
                 tag = part.type.lower()
                 rendered.append(f"[{tag}]")
@@ -47,20 +50,22 @@ class Delivery:
         now = time.time()
         day = datetime.fromtimestamp(now, self.settings.timezone).date().isoformat()
         message = turn["message"]
-        await self.storage.append(
-            replace(
-                message,
-                sender_id=message.self_id,
-                sender_name=self.settings.controller["robot_name"].strip(),
-                message_id=f"reply:{turn['run']}:{index}",
-                sent_at=now,
-                received_at=now,
-                text="".join(rendered),
-                segments=json.dumps(segments, ensure_ascii=False),
-                day=day,
-                direction="out",
-            )
+        output_message = replace(
+            message,
+            sender_id=message.self_id,
+            sender_name=self.settings.controller["robot_name"].strip(),
+            message_id=f"reply:{turn['run']}:{index}",
+            sent_at=now,
+            received_at=now,
+            text="".join(rendered),
+            segments=json.dumps(segments, ensure_ascii=False),
+            day=day,
+            direction="out",
         )
+        if await self.storage.append(output_message) and getattr(
+            self.storage, "media", None
+        ):
+            await self.storage.media.capture(output_message, parts)
         first = not turn["recorded"]
         turn["recorded"].add(index)
         await self.storage.record_reply_activity(

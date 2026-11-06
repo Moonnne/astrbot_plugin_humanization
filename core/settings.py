@@ -37,6 +37,8 @@ class Settings:
         self.logging = config["logging"]
         self.management = config["management"]
         self.recorder = config["recorder"]
+        if not 1 <= int(self.recorder.get("media_max_mb", 50)) <= 1024:
+            raise ValueError("Media size limit must be between 1 and 1024 MiB")
         self.controller = config["controller"]
         self.proactive = config["proactive"]
         self.prompts = config["prompts"]

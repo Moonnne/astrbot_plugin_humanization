@@ -164,6 +164,25 @@
         "_special": "select_provider",
         "hint": "未选择时只记录原始聊天，不调用模型生成日记"
       },
+      "media_enabled": {
+        "type": "bool",
+        "description": "启用消息转述",
+        "default": true,
+        "hint": "同一会话的附件按小批次转述，减少模型请求。关闭时仍保存媒体文件及名称等基础信息；监听模式不调用模型。"
+      },
+      "media_provider": {
+        "type": "string",
+        "description": "消息转述模型",
+        "default": "",
+        "_special": "select_provider",
+        "hint": "留空使用 Recorder 摘要模型，不回退主 LLM。图片需要 image 能力，语音优先适配器 STT，再使用音频模型，最后原生 STT。"
+      },
+      "media_max_mb": {
+        "type": "int",
+        "description": "媒体持久化单文件上限（MiB）",
+        "default": 50,
+        "hint": "资源与聊天记录联动删除；文件转述只读取小于1 MB的简单文本，不解析复杂文档。"
+      },
       "filter_commands": {
         "type": "bool",
         "description": "过滤指令模式对话",

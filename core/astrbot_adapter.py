@@ -684,6 +684,40 @@ class AstrBotAdapter:
                 )
             return names
 
+    async def tool_catalog(self, event):
+        """Describe active persona tools without constructing or running an Agent."""
+        try:
+            umo = event.unified_msg_origin
+            manager = self.context.conversation_manager
+            cid = await manager.get_curr_conversation_id(umo)
+            conversation = await manager.get_conversation(umo, cid) if cid else None
+            (
+                _,
+                persona,
+                _,
+                _,
+            ) = await self.context.persona_manager.resolve_selected_persona(
+                umo=umo,
+                conversation_persona_id=conversation.persona_id
+                if conversation
+                else None,
+                platform_name=event.get_platform_name(),
+                provider_settings=self.context.get_config(umo=umo)["provider_settings"],
+            )
+            allowed = persona.get("tools") if persona else None
+            blocked = self.settings.controller["blocked_tools"]
+            tools = self.context.get_llm_tool_manager().get_full_tool_set()
+            return [
+                {"name": tool.name, "description": str(tool.description)[:400]}
+                for tool in sorted(tools, key=lambda tool: tool.name)
+                if tool.active
+                and tool.name not in blocked
+                and (allowed is None or tool.name in allowed)
+            ]
+        except Exception:
+            self.log.debug("controller.tools.unavailable")
+            return []
+
     async def request(self, event):
         """Collect native media and conversation before yielding to the Agent.
 

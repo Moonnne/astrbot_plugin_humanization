@@ -23,6 +23,12 @@ const sort = computed({
 });
 const rows = ref([]), total = ref(0), selected = ref([]), loading = ref(false), error = ref('');
 const detail = ref(null), confirm = ref(false), deleting = ref(false), success = ref('');
+const mediaPreview = ref(null);
+watch(detail, () => { mediaPreview.value = null; });
+async function preview(resource) {
+  try { mediaPreview.value = await bridge.apiGet('resource', {id:resource.id}); }
+  catch (e) { error.value = e.message; }
+}
 let generation = 0, timer;
 const titles = { messages:'聊天记录', decisions:'最近反应', topics:'话题', diaries:'日记' };
 const headers = computed(() => [
@@ -110,7 +116,15 @@ const detailFields = computed(() => {
   </div>
   <v-dialog :model-value="!!detail" max-width="1000" scrollable @update:model-value="!$event && (detail = null)">
     <v-card><v-card-title class="text-h6 pa-4 pb-0 pl-6">{{ titles[category] }}详情</v-card-title>
-      <v-card-text><JsonValue :value="detailFields" /></v-card-text>
+      <v-card-text>
+        <div class="d-flex flex-wrap ga-2 mb-3">
+          <v-btn v-for="resource in (detail?.resources || []).filter(r => r.path && ['image','record','video'].includes(r.kind))" :key="resource.id" size="small" @click="preview(resource)">查看 {{ resource.name }}</v-btn>
+        </div>
+        <img v-if="mediaPreview?.kind === 'image'" :src="mediaPreview.url" alt="聊天图片" style="max-width:100%;max-height:420px" />
+        <audio v-else-if="mediaPreview?.kind === 'record'" :src="mediaPreview.url" controls />
+        <video v-else-if="mediaPreview?.kind === 'video'" :src="mediaPreview.url" controls style="max-width:100%;max-height:420px" />
+        <JsonValue :value="detailFields" />
+      </v-card-text>
       <v-card-actions><v-spacer /><v-btn @click="detail = null">关闭</v-btn></v-card-actions>
     </v-card>
   </v-dialog>
@@ -119,7 +133,7 @@ const detailFields = computed(() => {
       <v-card-text>
         将永久删除所选 {{ selected.length }} 条{{ titles[category] }}。
         <p v-if="category === 'diaries'" class="mt-3">这些日期下的话题会一并删除。</p>
-        <p v-if="category === 'messages'" class="mt-3">已有日记仍保留，消息累计序号不回退。当前群聊消息不足门槛时，会重新进入观察期。</p>
+          <p v-if="category === 'messages'" class="mt-3">关联媒体文件及转述记录一并删除。已有日记仍保留，消息累计序号不回退。文件被占用时后台继续清理。当前群聊消息不足门槛时，会重新进入观察期。</p>
         <p class="mt-3">仅处理插件数据，不清除 AstrBot 原生对话。正在回复或整理时会拒绝删除，请稍后重试。</p>
       </v-card-text>
       <v-card-actions><v-spacer /><v-btn :disabled="deleting" @click="confirm = false">取消</v-btn><v-btn color="error" :loading="deleting" @click="remove">确认删除</v-btn></v-card-actions>

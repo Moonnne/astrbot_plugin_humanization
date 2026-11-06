@@ -23,6 +23,7 @@ from .controller.delivery import Delivery
 from .controller.prompts import Prompts
 from .controller.scheduler import Scheduler
 from .management import Management, ManagementAccessFilter, ManagementMessageFilter
+from .recorder.media import Media
 from .recorder.storage import Storage
 from .recorder.summarizer import Summarizer
 from .settings import Settings
@@ -80,6 +81,8 @@ class Runtime:
                 self.settings.recorder["retention"],
                 self.log,
             )
+            self.media = Media(self.storage, self.settings, context, self.log)
+            self.storage.media = self.media
             self.prompts = Prompts(
                 self.settings,
                 self.storage,
@@ -130,6 +133,7 @@ class Runtime:
             for name in ("behavior", "expression", "group", "private"):
                 await self.prompts.fragment(name)
             await self.storage.open()
+            await self.media.recover()
         except BaseException:
             self.log.critical("runtime.initialize.failed")
             await self.log.close()
@@ -149,6 +153,7 @@ class Runtime:
                     asyncio.create_task(self.idle_loop(), name="humanization-idle")
                 )
 
+        self.tasks.add(asyncio.create_task(self.media.run(), name="humanization-media"))
         for task in self.tasks:
             task.add_done_callback(self._background_done)
 
@@ -268,6 +273,11 @@ class Runtime:
                 self.log.debug("message.filtered", reason="command")
                 return
             if await self.storage.append(message):
+                await self.media.capture(
+                    message,
+                    event.get_messages(),
+                    getattr(event.message_obj, "raw_message", None),
+                )
                 event.set_extra("humanization_message", message)
                 if (
                     action == "active"
@@ -413,9 +423,10 @@ class Runtime:
                         self.log.debug("reply.skipped", reason="newer_message")
                         return
                 mentioned = self.settings.mentioned(message.text, message.segments)
+                tools = await self.adapter.tool_catalog(event)
                 if scheduled is None:
                     decision = await self.controller.decide(
-                        message, direct_at, mentioned, idle
+                        message, direct_at, mentioned, idle, tools=tools
                     )
                 else:
                     decision = await self.controller.decide(
@@ -424,6 +435,7 @@ class Runtime:
                         scheduled.mentioned,
                         idle,
                         scheduled=scheduled,
+                        tools=tools,
                     )
                 outcome = decision.reason or (
                     "reply" if decision.reply else "semantic_wait"
