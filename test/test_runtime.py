@@ -82,7 +82,7 @@ def test_invalid_summary_window_rejected(config):
         Settings(config)
 
 
-@pytest.mark.parametrize("key", ["runtime_max_mb", "dev_max_mb"])
+@pytest.mark.parametrize("key", ["max_mb"])
 @pytest.mark.parametrize("limit", [-1, float("inf"), float("nan"), "5", True])
 def test_invalid_log_size_limit_rejected(config, key, limit):
     config["logging"][key] = limit
@@ -92,7 +92,7 @@ def test_invalid_log_size_limit_rejected(config, key, limit):
 
 @pytest.mark.parametrize("limit", [0, 0.5, 5])
 def test_nonnegative_log_size_limits_are_valid(config, limit):
-    config["logging"].update(runtime_max_mb=limit, dev_max_mb=limit)
+    config["logging"].update(max_mb=limit)
     Settings(config)
 
 

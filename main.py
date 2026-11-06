@@ -26,6 +26,7 @@ class Humanization(Star):
             self.dashboard = Dashboard(self)
             self.dashboard.register()
         except Exception:
+            self.runtime.log.critical("dashboard.initialize.failed")
             await self.runtime.terminate()
             raise
 
@@ -41,6 +42,13 @@ class Humanization(Star):
             item["options"] = list(choices)
             item["labels"] = list(choices.values())
         self.runtime.log.debug("scope.options.updated", option_count=len(choices))
+        self.config.schema["logging"]["items"]["level"]["options"] = [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL",
+        ] + (["TRACK"] if self.config["logging"]["debug"] else [])
         items = self.config.schema["controller"]["items"]
         for key in ("group", "private"):
             items[key]["hint"] = (
@@ -179,7 +187,7 @@ class Humanization(Star):
     @filter.on_llm_tool_respond(priority=10000)
     async def tool_finished(self, event, tool, tool_args, tool_result):
         turn = event.get_extra("humanization_turn")
-        if turn and self.runtime.log.debug_mode:
+        if turn and self.runtime.log.enabled("DEBUG"):
             result = []
             if tool_result:
                 for part in tool_result.content:
@@ -200,6 +208,11 @@ class Humanization(Star):
             )
 
     async def terminate(self):
-        if hasattr(self, "dashboard"):
-            self.dashboard.close()
-        await self.runtime.terminate()
+        try:
+            if hasattr(self, "dashboard"):
+                self.dashboard.close()
+        except Exception:
+            self.runtime.log.exception("dashboard.shutdown.failed")
+            raise
+        finally:
+            await self.runtime.terminate()

@@ -7,6 +7,7 @@ from datetime import datetime
 from time import perf_counter
 
 from ...models.decision import Decision
+from ...utils.log_tracking import log_context
 from .protocol import ControllerProtocol
 
 
@@ -23,6 +24,7 @@ class Controller:
     def lock(self, scope: str) -> asyncio.Lock:
         return self.locks.setdefault(scope, asyncio.Lock())
 
+    @log_context("controller")
     async def decide(
         self,
         message,
@@ -84,6 +86,7 @@ class Controller:
             else f"{message.platform}:GroupMessage:{message.group_id}"
         )
         started = perf_counter()
+        self.log.info("gate.start", conversation=conversation, reply_required=required)
         try:
             system = await self.prompts.gate(message.private)
             through = (
@@ -188,6 +191,9 @@ class Controller:
                 emotion=result["emotion"]["primary"],
                 intensity=result["emotion"]["intensity"],
                 participation=plan["participation"] if plan else None,
+                reason=result["reason"],
+                message_count=len(context["messages"]),
+                topic_count=len(context["topics"]["items"]),
                 duration_seconds=round(perf_counter() - started, 3),
             )
             return Decision(
@@ -198,6 +204,9 @@ class Controller:
                 focus,
                 record_id,
             )
+        except asyncio.CancelledError:
+            self.log.debug("gate.cancelled", conversation=conversation)
+            raise
         except Exception:
             self.log.exception(
                 "gate.failed",

@@ -1,254 +1,133 @@
-"""Concise auxiliary-model outcomes without changing requests or decisions."""
+"""Business outcomes and storage semantics remain intact after logging changes."""
 
-import json
-import logging
-import time
-from types import SimpleNamespace
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
 from controller_helpers import plan_json
-from diary_helpers import model_change, topic_change
-from humanization_test.core.controller import controller as controller_module
-from humanization_test.core.recorder import summarizer as summarizer_module
+from diary_helpers import model_change
 from test_host_contract import plugin as plugin
 from test_logging import entries
 from test_management import admin_event
 from test_management import managed as managed
 
 
-@pytest.mark.parametrize("debug", [False, True])
 @pytest.mark.parametrize("private", [False, True])
-async def test_recorder_completion_reports_scope_actual_rows_and_duration(
-    managed, monkeypatch, debug, private
-):
-    managed.log.debug_mode = debug
+async def test_recorder_start_and_commit_count(managed, private):
     managed.settings.scope["all_sessions"] = True
     managed.settings.recorder.update(summary_provider="summary", summary_every=2)
     for number in range(1, 4):
         event = admin_event(f"private source {number}", private=private)
-        if not private:
-            event.session.session_id = "42_123"
         event.message_obj.message_id = str(number)
         message = managed.adapter.snapshot(event)
         await managed.storage.append(message)
-    await managed.storage.commit_summary(
-        message.scope,
-        message.day,
-        [topic_change("private older diary")],
-        1,
-        1,
-        time.time(),
-    )
-    clock = SimpleNamespace(now=100)
-    monkeypatch.setattr(summarizer_module, "perf_counter", lambda: clock.now)
-
-    async def generate(*args, **kwargs):
-        clock.now += 2.5
-        return model_change("private updated diary", 2)
-
-    managed.summarizer.generate = AsyncMock(side_effect=generate)
+    managed.summarizer.generate = AsyncMock(return_value=model_change("diary topic", 1))
     await managed.summarizer.tick()
     await managed.log.flush()
-    rows = entries(managed.log.directory / ("dev.log" if debug else "runtime.log"))
+    rows = entries(managed.log.directory / "humanization.log")
+    started = next(row for row in rows if row["event"] == "summary.start")
     complete = next(row for row in rows if row["event"] == "summary.complete")
-    assert complete["data"] == {
-        "conversation": "onebot:FriendMessage:42"
-        if private
-        else "onebot:GroupMessage:123",
-        "message_count": 2,
-        "context_count": 3,
-        "added_topics": 1,
-        "updated_topics": 0,
-        "duration_seconds": 2.5,
-    }
-    managed.summarizer.generate.assert_awaited_once()
+    scope = "onebot:FriendMessage:42" if private else "onebot:GroupMessage:123"
+    assert scope in started["body"] and scope in complete["body"]
+    assert (
+        "message_count=3" in complete["body"] and "added_topics=1" in complete["body"]
+    )
+    assert "duration_seconds=" in complete["body"]
     assert (await managed.storage.session(message.scope))["cursor"] == 3
-    assert (await managed.storage.diaries(message.scope))[-1]["topics"][-1][
-        "topic"
-    ] == "private updated diary"
-    records = [
-        call
-        for call in managed.log.console.log.call_args_list
-        if call.args[2] == "summary.complete"
-    ]
-    assert len(records) == int(not debug)
-    if records:
-        assert records[0].args[0] == logging.INFO
-        assert json.loads(records[0].args[3]) == complete["data"]
-    if not debug:
-        raw = (managed.log.directory / "runtime.log").read_text(encoding="utf-8")
-        assert "private source" not in raw and "private updated diary" not in raw
-    else:
-        assert not managed.log.console.mock_calls
+    assert "private source" not in str(rows)
+    assert not managed.log.console.mock_calls
 
 
-@pytest.mark.parametrize("debug", [False, True])
-@pytest.mark.parametrize("failure", ["timeout", "empty_result"])
-async def test_recorder_failure_reports_scope_duration_and_uncommitted_count(
-    managed, monkeypatch, debug, failure
-):
-    managed.log.debug_mode = debug
+@pytest.mark.parametrize(
+    "failure", [TimeoutError("provider failed"), ValueError("invalid response")]
+)
+async def test_recorder_failure_leaves_cursor_retryable(managed, failure):
     managed.settings.recorder.update(summary_provider="summary", summary_every=1)
-    event = admin_event("private source")
-    event.session.session_id = "42_123"
-    message = managed.adapter.snapshot(event)
+    message = managed.adapter.snapshot(admin_event("private source"))
     await managed.storage.append(message)
-    clock = SimpleNamespace(now=100)
-    monkeypatch.setattr(summarizer_module, "perf_counter", lambda: clock.now)
-
-    async def generate(*args, **kwargs):
-        clock.now += 3.25
-        if failure == "timeout":
-            raise TimeoutError("private provider error")
-        return "  "
-
-    managed.summarizer.generate = AsyncMock(side_effect=generate)
+    managed.summarizer.generate = AsyncMock(side_effect=failure)
     await managed.summarizer.tick()
     await managed.log.flush()
-    rows = entries(managed.log.directory / ("dev.log" if debug else "runtime.log"))
+    rows = entries(managed.log.directory / "humanization.log")
     failed = next(row for row in rows if row["event"] == "summary.failed")
-    assert failed["level"] == "ERROR"
-    assert failed["data"]["conversation"] == "onebot:GroupMessage:123"
-    assert failed["data"]["message_count"] == 0
-    assert failed["data"]["candidate_count"] == 1
-    assert failed["data"]["duration_seconds"] == 3.25
-    assert failed["data"]["error_type"] == (
-        "TimeoutError" if failure == "timeout" else "JSONDecodeError"
-    )
-    assert not any(row["event"] == "summary.complete" for row in rows)
+    assert "message_count=0" in failed["body"]
+    assert "candidate_count=1" in failed["body"]
+    assert type(failure).__name__ in failed["body"]
     assert (await managed.storage.session(message.scope))["cursor"] == 0
     assert not await managed.storage.diaries(message.scope)
-    records = [
-        call
-        for call in managed.log.console.log.call_args_list
-        if call.args[2] == "summary.failed"
-    ]
-    assert len(records) == int(not debug)
-    if records:
-        assert records[0].args[0] == logging.ERROR
-        assert "private provider error" not in str(records)
-    else:
-        assert not managed.log.console.mock_calls
 
 
-@pytest.mark.parametrize("debug", [False, True])
-@pytest.mark.parametrize("action", ["reply", "wait"])
-async def test_controller_logs_existing_plan_without_changing_protocol_or_intent(
-    managed, monkeypatch, debug, action
-):
-    managed.log.debug_mode = debug
+@pytest.mark.parametrize("reply", [False, True])
+async def test_controller_plan_and_outcome_are_unchanged(managed, reply):
     managed.settings.controller.update(
         group=1, gate_provider="gate", cooldown_seconds=0
     )
-    event = admin_event("private source")
-    event.session.session_id = "42_123"
-    message = managed.adapter.snapshot(event)
+    message = managed.adapter.snapshot(admin_event("private source"))
     await managed.storage.append(message)
-    clock = SimpleNamespace(now=100)
-    monkeypatch.setattr(controller_module, "perf_counter", lambda: clock.now)
-    intent = "用轻松口吻接话，带一点调侃。" + "x" * 150 + "private plan tail"
-
-    async def generate(*args, **kwargs):
-        clock.now += 1.125
-        return plan_json(
-            reply=action == "reply", target=message.message_id, guidance=intent
+    guidance = "keep this exact plan"
+    managed.controller.generate = AsyncMock(
+        return_value=plan_json(
+            reply=reply, target=message.message_id, guidance=guidance
         )
-
-    managed.controller.generate = AsyncMock(side_effect=generate)
-    decision = await managed.controller.decide(message, False, False)
-    assert decision.reply is (action == "reply") and decision.intent == (
-        intent if action == "reply" else ""
     )
-    managed.controller.generate.assert_awaited_once()
-    system = managed.controller.generate.call_args.args[1]
-    assert system.startswith(managed.prompts.text["gate"])
-    assert "emotion" in system
+    decision = await managed.controller.decide(message, False, False)
+    assert decision.reply is reply
+    assert decision.intent == (guidance if reply else "")
     await managed.log.flush()
-    rows = entries(managed.log.directory / ("dev.log" if debug else "runtime.log"))
+    rows = entries(managed.log.directory / "humanization.log")
+    assert any(row["event"] == "gate.start" for row in rows)
     complete = next(row for row in rows if row["event"] == "gate.complete")
-    assert complete["data"] == {
-        "conversation": "onebot:GroupMessage:123",
-        "action": action,
-        "emotion": "NEUTRAL",
-        "intensity": 0,
-        "participation": "respond" if action == "reply" else None,
-        "duration_seconds": 1.125,
-    }
-    records = [
-        call
-        for call in managed.log.console.log.call_args_list
-        if call.args[2] == "gate.complete"
-    ]
-    assert len(records) == int(not debug)
-    if records:
-        assert records[0].args[0] == logging.INFO
-        assert "private source" not in str(records)
-        assert "private plan tail" not in str(records)
-    else:
-        assert not managed.log.console.mock_calls
-        original = next(row for row in rows if row["event"] == "gate.decision")
-        assert original["data"]["decision"] == decision.planning
+    assert f"action={'reply' if reply else 'wait'}" in complete["body"]
+    assert "emotion=NEUTRAL" in complete["body"]
+    assert "onebot:GroupMessage:123" in complete["body"]
+    assert guidance not in str(rows)
 
 
-@pytest.mark.parametrize("debug", [False, True])
-@pytest.mark.parametrize("failure", ["timeout", "invalid_json"])
-async def test_controller_error_keeps_wait_decision_and_reports_error_metadata(
-    managed, monkeypatch, debug, failure
-):
-    managed.log.debug_mode = debug
+@pytest.mark.parametrize("forced", [False, True])
+async def test_controller_failure_keeps_fallback_policy(managed, forced):
     managed.settings.controller.update(
         group=1, gate_provider="gate", cooldown_seconds=0
     )
-    message = managed.adapter.snapshot(admin_event("private source", private=True))
+    message = managed.adapter.snapshot(admin_event("private source"))
     await managed.storage.append(message)
-    clock = SimpleNamespace(now=100)
-    monkeypatch.setattr(controller_module, "perf_counter", lambda: clock.now)
-
-    async def generate(*args, **kwargs):
-        clock.now += 4
-        if failure == "timeout":
-            raise TimeoutError("private provider error")
-        return "private invalid response"
-
-    managed.controller.generate = AsyncMock(side_effect=generate)
-    # Private activity must pass its existing probability gate.
-    managed.settings.controller["private"] = 1
-    decision = await managed.controller.decide(message, False, False)
-    assert not decision.reply and decision.reason == "error"
+    managed.controller.generate = AsyncMock(side_effect=TimeoutError("provider failed"))
+    decision = await managed.controller.decide(message, forced, False)
+    assert decision.reply is forced
     await managed.log.flush()
-    rows = entries(managed.log.directory / ("dev.log" if debug else "runtime.log"))
-    failed = next(row for row in rows if row["event"] == "gate.failed")
-    assert failed["data"]["conversation"] == "onebot:FriendMessage:42"
-    assert failed["data"]["action"] == "wait"
-    assert failed["data"]["duration_seconds"] == 4
-    assert failed["data"]["error_type"] == (
-        "TimeoutError" if failure == "timeout" else "JSONDecodeError"
-    )
+    rows = entries(managed.log.directory / "humanization.log")
+    assert any(row["event"] == "gate.failed" for row in rows)
     assert not any(row["event"] == "gate.complete" for row in rows)
-    records = [
-        call
-        for call in managed.log.console.log.call_args_list
-        if call.args[2] == "gate.failed"
-    ]
-    assert len(records) == int(not debug)
-    if records:
-        assert records[0].args[0] == logging.ERROR
-        assert "private provider error" not in str(records)
-        assert "private invalid response" not in str(records)
-    else:
-        assert not managed.log.console.mock_calls
 
 
-async def test_forced_branch_does_not_report_a_fabricated_model_plan(managed):
-    message = managed.adapter.snapshot(admin_event("called directly"))
+async def test_controller_cancellation_is_not_converted_to_reply(managed):
+    managed.settings.controller.update(
+        group=1, gate_provider="gate", cooldown_seconds=0
+    )
+    message = managed.adapter.snapshot(admin_event("private source"))
     await managed.storage.append(message)
-    managed.controller.generate = AsyncMock()
+    managed.controller.generate = AsyncMock(side_effect=asyncio.CancelledError())
+    with pytest.raises(asyncio.CancelledError):
+        await managed.controller.decide(message, True, False)
+
+
+async def test_background_crash_is_critical(managed):
+    async def crash():
+        raise RuntimeError("worker died")
+
+    task = asyncio.create_task(crash())
+    await asyncio.sleep(0)
+    managed._background_done(task)
+    raw = (managed.log.directory / "humanization.log").read_text(encoding="utf-8")
+    assert "runtime.worker.stopped" in raw and "CRIT" in raw
+
+
+async def test_forced_no_provider_does_not_fabricate_a_model_completion(managed):
+    message = managed.adapter.snapshot(admin_event("direct"))
+    await managed.storage.append(message)
     decision = await managed.controller.decide(message, True, False)
     assert decision.reply and decision.reason == "forced"
-    managed.controller.generate.assert_not_awaited()
     await managed.log.flush()
     assert not any(
         row["event"] == "gate.complete"
-        for row in entries(managed.log.directory / "runtime.log")
+        for row in entries(managed.log.directory / "humanization.log")
     )

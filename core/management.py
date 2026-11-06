@@ -50,17 +50,17 @@ class Management:
             return ""
         if not event.is_private_chat():
             return "此指令仅允许在私聊中使用"
-        if target not in ("log", "dev_log"):
-            return "未知的指令参数\n用法：/hum clear log 或 /hum clear dev_log"
-        name = "runtime.log" if target == "log" else "dev.log"
+        if target == "dev_log":
+            return "日志已统一为 humanization.log，请使用 /hum clear log"
+        if target != "log":
+            return "未知的指令参数\n用法：/hum clear log"
+        name = "humanization.log"
         try:
             await self.runtime.log.clear(name)
         except OSError as exc:
-            self.runtime.log.console.error(
-                "Humanization admin log clear failed: %s (%s)", name, type(exc).__name__
-            )
+            self.runtime.log.exception("admin.log.clear.failed")
             return f"error: {type(exc).__name__}"
-        self.runtime.log.console.info("Humanization admin cleared %s", name)
+        self.runtime.log.info("admin.log.cleared")
         return "done"
 
     async def info(self, event, umo: str = "") -> str:
@@ -284,16 +284,11 @@ class Management:
                 )
         except Exception as exc:
             self.runtime.log.exception("admin.reset.failed", mode=entry["mode"])
-            self.runtime.log.console.error(
-                "Humanization admin data reset failed (%s)", type(exc).__name__
-            )
             return f"error: {type(exc).__name__}"
-        self.runtime.log.console.info(
-            "Humanization admin reset %s data for conversation %s",
-            entry["mode"],
-            ",".join(
-                self.runtime.log.identity(target.scope) for target in entry["targets"]
-            ),
+        self.runtime.log.info(
+            "admin.reset.confirmed",
+            mode=entry["mode"],
+            conversations=len(entry["targets"]),
         )
         return "done"
 

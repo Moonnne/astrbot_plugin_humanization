@@ -1,7 +1,7 @@
-import { r as resolveComponent, o as openBlock, c as createElementBlock, a as createVNode, w as withCtx, F as Fragment, b as renderList, d as createBaseVNode, t as toDisplayString, e as createTextVNode, f as computed, g as createCommentVNode, h as createBlock, i as ref, j as watch, u as unref, m as mdiFilterRemoveOutline, k as mdiChevronLeft, l as mdiMagnify, n as mergeProps, p as normalizeClass, q as pushScopeId, s as popScopeId, v as onBeforeUnmount, x as normalizeStyle, y as withModifiers, z as mdiArrowUpDown, A as withKeys, B as inject, C as reactive, D as mdiFilterVariant, E as mdiDeleteOutline, G as withDirectives, H as vShow, I as mdiEyeOutline, J as mdiChevronDown, K as mdiPlus, L as mdiRobotOutline, M as mdiCheck, N as mdiFileCompare, O as mdiClose, P as mdiRestore, Q as onMounted, R as mdiRefresh, S as mdiContentSaveOutline, T as mdiMenu, U as mdiDeleteAlertOutline, V as mdiTextBoxOutline, W as mdiShieldAccountOutline, X as mdiMessageTextOutline, Y as mdiHeadCogOutline, Z as mdiAccountGroupOutline, _ as mdiAlertCircleOutline, $ as mdiChartBar, a0 as mdiHeartOutline, a1 as mdiForumOutline, a2 as mdiBookOpenPageVariantOutline, a3 as mdiCogOutline, a4 as createVuetify, a5 as createApp, a6 as zhHans, a7 as mdi, a8 as aliases, a9 as VExpandXTransition, aa as VTextarea, ab as VTextField, ac as VTable, ad as VSwitch, ae as VSnackbar, af as VSlider, ag as VSelect, ah as VSpacer, ai as VCol, aj as VRow, ak as VContainer, al as VProgressLinear, am as VMenu, an as VListItem, ao as VList, ap as VMain, aq as VIcon, ar as VDivider, as as VDialog, at as VDataTableServer, au as VCombobox, av as VCheckboxBtn, aw as VChip, ax as VCardTitle, ay as VCardText, az as VCardActions, aA as VCard, aB as VBtn, aC as VAutocomplete, aD as VAlert, aE as VApp } from "./assets/vendor.js";
+import { r as resolveComponent, o as openBlock, c as createElementBlock, a as createVNode, w as withCtx, F as Fragment, b as renderList, d as createBaseVNode, t as toDisplayString, e as createTextVNode, f as computed, g as createCommentVNode, h as createBlock, i as ref, j as watch, u as unref, m as mdiFilterRemoveOutline, k as mdiChevronLeft, l as mdiMagnify, n as mergeProps, p as normalizeClass, q as pushScopeId, s as popScopeId, v as onBeforeUnmount, x as normalizeStyle, y as withModifiers, z as mdiArrowUpDown, A as withKeys, B as inject, C as reactive, D as mdiFilterVariant, E as mdiDeleteOutline, G as withDirectives, H as vShow, I as mdiEyeOutline, J as mdiChevronDown, K as mdiPlus, L as mdiRobotOutline, M as mdiCheck, N as mdiFileCompare, O as mdiClose, P as mdiRestore, Q as onMounted, R as mdiRefresh, S as mdiContentSaveOutline, T as mdiMenu, U as mdiDeleteAlertOutline, V as mdiTextBoxOutline, W as mdiShieldAccountOutline, X as mdiMessageTextOutline, Y as mdiHeadCogOutline, Z as mdiAccountGroupOutline, _ as mdiAlertCircleOutline, $ as mdiChartBar, a0 as mdiHeartOutline, a1 as mdiForumOutline, a2 as mdiBookOpenPageVariantOutline, a3 as mdiCogOutline, a4 as createVuetify, a5 as createApp, a6 as zhHans, a7 as mdi, a8 as aliases, a9 as VExpandXTransition, aa as VExpandTransition, ab as VTextarea, ac as VTextField, ad as VTable, ae as VSwitch, af as VSnackbar, ag as VSlider, ah as VSelect, ai as VSpacer, aj as VCol, ak as VRow, al as VContainer, am as VProgressLinear, an as VMenu, ao as VListItem, ap as VList, aq as VMain, ar as VIcon, as as VDivider, at as VDialog, au as VDataTableServer, av as VCombobox, aw as VCheckboxBtn, ax as VChip, ay as VCardTitle, az as VCardText, aA as VCardActions, aB as VCard, aC as VBtn, aD as VAutocomplete, aE as VAlert, aF as VApp } from "./assets/vendor.js";
 const _hoisted_1$c = { class: "text-body-2 text-medium-emphasis mb-3" };
 const _hoisted_2$b = { class: "text-h4 font-weight-bold" };
-const _sfc_main$c = {
+const _sfc_main$d = {
   __name: "Overview",
   props: { stats: Object },
   emits: ["browse"],
@@ -73,7 +73,7 @@ const _hoisted_6$9 = {
   key: 3,
   class: "text-body-2 text-pre-wrap text-break"
 };
-const _sfc_main$b = {
+const _sfc_main$c = {
   __name: "JsonValue",
   props: { value: { default: null } },
   setup(__props) {
@@ -179,7 +179,7 @@ const _hoisted_9$4 = ["aria-pressed", "onClick"];
 const _hoisted_10$4 = /* @__PURE__ */ _withScopeId$7(() => /* @__PURE__ */ createBaseVNode("p", { class: "filter-label" }, "回复决定", -1));
 const _hoisted_11$2 = { class: "type-options mb-4" };
 const _hoisted_12$2 = ["aria-pressed", "onClick"];
-const _sfc_main$a = {
+const _sfc_main$b = {
   __name: "FilterPanel",
   props: { category: String, model: Object, sessions: Array, active: Boolean },
   emits: ["collapse", "reset"],
@@ -439,12 +439,12 @@ const _sfc_main$a = {
     };
   }
 };
-const FilterPanel = /* @__PURE__ */ _export_sfc(_sfc_main$a, [["__scopeId", "data-v-92641de0"]]);
+const FilterPanel = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["__scopeId", "data-v-92641de0"]]);
 const _hoisted_1$9 = ["aria-sort", "onClick"];
 const _hoisted_2$8 = ["aria-label", "onClick"];
 const _hoisted_3$8 = { key: 1 };
 const _hoisted_4$8 = ["aria-label", "aria-valuenow", "aria-valuemin", "onPointerdown", "onDblclick", "onKeydown"];
-const _sfc_main$9 = /* @__PURE__ */ Object.assign({ inheritAttrs: false }, {
+const _sfc_main$a = /* @__PURE__ */ Object.assign({ inheritAttrs: false }, {
   __name: "ResizableHeaders",
   props: { columns: Array, widths: Object, defaults: Object, sortBy: Array, isSorted: Function, toggleSort: Function, getSortIcon: Function, allSelected: Boolean, someSelected: Boolean, selectAll: Function },
   emits: ["resize"],
@@ -532,7 +532,7 @@ const _sfc_main$9 = /* @__PURE__ */ Object.assign({ inheritAttrs: false }, {
     };
   }
 });
-const ResizableHeaders = /* @__PURE__ */ _export_sfc(_sfc_main$9, [["__scopeId", "data-v-fa463a85"]]);
+const ResizableHeaders = /* @__PURE__ */ _export_sfc(_sfc_main$a, [["__scopeId", "data-v-fa463a85"]]);
 const _withScopeId$6 = (n) => (pushScopeId("data-v-c20e06de"), n = n(), popScopeId(), n);
 const _hoisted_1$8 = { class: "d-flex align-center flex-wrap ga-3 mb-4" };
 const _hoisted_2$7 = { class: "text-body-2 text-medium-emphasis flex-grow-1" };
@@ -566,7 +566,7 @@ const _hoisted_16 = {
   class: "mt-3"
 };
 const _hoisted_17 = /* @__PURE__ */ _withScopeId$6(() => /* @__PURE__ */ createBaseVNode("p", { class: "mt-3" }, "仅处理插件数据，不清除 AstrBot 原生对话。正在回复或整理时会拒绝删除，请稍后重试。", -1));
-const _sfc_main$8 = {
+const _sfc_main$9 = {
   __name: "Records",
   props: { category: String, sessions: Array, refresh: Number, timezone: String },
   emits: ["changed"],
@@ -864,7 +864,7 @@ ${item.conversation}`
                 }),
                 createVNode(_component_v_card_text, null, {
                   default: withCtx(() => [
-                    createVNode(_sfc_main$b, { value: detailFields.value }, null, 8, ["value"])
+                    createVNode(_sfc_main$c, { value: detailFields.value }, null, 8, ["value"])
                   ]),
                   _: 1
                 }),
@@ -947,7 +947,7 @@ ${item.conversation}`
     };
   }
 };
-const Records = /* @__PURE__ */ _export_sfc(_sfc_main$8, [["__scopeId", "data-v-c20e06de"]]);
+const Records = /* @__PURE__ */ _export_sfc(_sfc_main$9, [["__scopeId", "data-v-c20e06de"]]);
 const _withScopeId$5 = (n) => (pushScopeId("data-v-0b84bc79"), n = n(), popScopeId(), n);
 const _hoisted_1$7 = { class: "resource-field" };
 const _hoisted_2$6 = { class: "resource-row" };
@@ -965,7 +965,7 @@ const _hoisted_8$3 = {
 };
 const _hoisted_9$2 = /* @__PURE__ */ _withScopeId$5(() => /* @__PURE__ */ createBaseVNode("p", { class: "text-caption text-medium-emphasis mb-2" }, "人格提示词预览", -1));
 const _hoisted_10$2 = { class: "persona-preview" };
-const _sfc_main$7 = {
+const _sfc_main$8 = {
   __name: "ResourceSelector",
   props: { modelValue: String, label: String, hint: String, kind: String, items: Array },
   emits: ["update:modelValue"],
@@ -1187,7 +1187,7 @@ const _sfc_main$7 = {
     };
   }
 };
-const ResourceSelector = /* @__PURE__ */ _export_sfc(_sfc_main$7, [["__scopeId", "data-v-0b84bc79"]]);
+const ResourceSelector = /* @__PURE__ */ _export_sfc(_sfc_main$8, [["__scopeId", "data-v-0b84bc79"]]);
 const _hoisted_1$6 = {
   key: 0,
   class: "mb-5"
@@ -1198,7 +1198,7 @@ const _hoisted_4$5 = { class: "d-flex justify-space-between align-center mb-3" }
 const _hoisted_5$5 = { class: "text-caption text-medium-emphasis" };
 const _hoisted_6$5 = { class: "text-subtitle-2 mb-2" };
 const _hoisted_7$4 = { class: "text-caption text-medium-emphasis" };
-const _sfc_main$6 = {
+const _sfc_main$7 = {
   __name: "SchemaFields",
   props: { schema: Object, model: Object, choices: Object },
   setup(__props) {
@@ -1378,7 +1378,7 @@ const _sfc_main$6 = {
   }
 };
 const _hoisted_1$5 = ["src", "alt"];
-const _sfc_main$5 = {
+const _sfc_main$6 = {
   __name: "PlatformIcon",
   props: { src: String, name: String },
   setup(__props) {
@@ -1402,7 +1402,7 @@ const _sfc_main$5 = {
     };
   }
 };
-const PlatformIcon = /* @__PURE__ */ _export_sfc(_sfc_main$5, [["__scopeId", "data-v-edd25b03"]]);
+const PlatformIcon = /* @__PURE__ */ _export_sfc(_sfc_main$6, [["__scopeId", "data-v-8beced67"]]);
 const _withScopeId$4 = (n) => (pushScopeId("data-v-91a718d6"), n = n(), popScopeId(), n);
 const _hoisted_1$4 = /* @__PURE__ */ _withScopeId$4(() => /* @__PURE__ */ createBaseVNode("div", { class: "text-subtitle-1 font-weight-bold mb-2" }, "工作模式", -1));
 const _hoisted_2$4 = {
@@ -1430,7 +1430,7 @@ const _hoisted_12 = {
   key: 0,
   class: "text-body-2 pa-3"
 };
-const _sfc_main$4 = {
+const _sfc_main$5 = {
   __name: "ScopeSettings",
   props: { schema: Object, model: Object, choices: Object },
   setup(__props) {
@@ -1790,7 +1790,91 @@ const _sfc_main$4 = {
     };
   }
 };
-const ScopeSettings = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["__scopeId", "data-v-91a718d6"]]);
+const ScopeSettings = /* @__PURE__ */ _export_sfc(_sfc_main$5, [["__scopeId", "data-v-91a718d6"]]);
+const _sfc_main$4 = {
+  __name: "LogSettings",
+  props: { model: Object, schema: Object },
+  setup(__props) {
+    const props = __props;
+    const levels = computed(() => props.schema.level.options.filter((level) => level !== "TRACK" || props.model.debug));
+    watch(() => props.model.debug, (enabled) => {
+      if (!enabled && props.model.level === "TRACK") props.model.level = "INFO";
+    });
+    return (_ctx, _cache) => {
+      const _component_v_select = resolveComponent("v-select");
+      const _component_v_text_field = resolveComponent("v-text-field");
+      const _component_v_switch = resolveComponent("v-switch");
+      const _component_v_card = resolveComponent("v-card");
+      const _component_v_expand_transition = resolveComponent("v-expand-transition");
+      return openBlock(), createElementBlock(Fragment, null, [
+        createVNode(_component_v_select, {
+          modelValue: __props.model.level,
+          "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => __props.model.level = $event),
+          label: "日志等级",
+          "aria-label": "日志等级",
+          items: levels.value,
+          hint: __props.schema.level.hint,
+          "persistent-hint": "",
+          class: "mb-5"
+        }, null, 8, ["modelValue", "items", "hint"]),
+        createVNode(_component_v_text_field, {
+          modelValue: __props.model.max_mb,
+          "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => __props.model.max_mb = $event),
+          modelModifiers: { number: true },
+          label: "humanization.log 大小上限（MB）",
+          type: "number",
+          min: "0",
+          step: "any",
+          hint: __props.schema.max_mb.hint,
+          "persistent-hint": "",
+          class: "mb-5"
+        }, null, 8, ["modelValue", "hint"]),
+        createVNode(_component_v_switch, {
+          modelValue: __props.model.debug,
+          "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => __props.model.debug = $event),
+          label: "调试模式",
+          hint: __props.schema.debug.hint,
+          "persistent-hint": "",
+          color: "primary",
+          inset: ""
+        }, null, 8, ["modelValue", "hint"]),
+        createVNode(_component_v_expand_transition, null, {
+          default: withCtx(() => [
+            __props.model.debug ? (openBlock(), createBlock(_component_v_card, {
+              key: 0,
+              "aria-label": "调试日志选项",
+              class: "pa-4 mt-4"
+            }, {
+              default: withCtx(() => [
+                createVNode(_component_v_switch, {
+                  modelValue: __props.model.mask,
+                  "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => __props.model.mask = $event),
+                  label: "数据脱敏",
+                  hint: __props.schema.mask.hint,
+                  "persistent-hint": "",
+                  color: "primary",
+                  inset: "",
+                  class: "mb-3"
+                }, null, 8, ["modelValue", "hint"]),
+                createVNode(_component_v_switch, {
+                  modelValue: __props.model.echo,
+                  "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => __props.model.echo = $event),
+                  label: "日志回显",
+                  hint: __props.schema.echo.hint,
+                  "persistent-hint": "",
+                  color: "primary",
+                  inset: ""
+                }, null, 8, ["modelValue", "hint"])
+              ]),
+              _: 1
+            })) : createCommentVNode("", true)
+          ]),
+          _: 1
+        })
+      ], 64);
+    };
+  }
+};
 function statistics(text) {
   const chars = Array.from(text), chinese = chars.filter((c) => /[\u4e00-\u9fff]/u.test(c)).length;
   const emoji = chars.filter((c) => /[\u200d\u2600-\u27bf\ufe00-\ufe0f\u{1f000}-\u{1faff}]/u.test(c)).length;
@@ -2130,7 +2214,7 @@ const _sfc_main$2 = {
   }
 };
 const PromptEditor = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["__scopeId", "data-v-aade2360"]]);
-const _withScopeId$1 = (n) => (pushScopeId("data-v-c5e96c54"), n = n(), popScopeId(), n);
+const _withScopeId$1 = (n) => (pushScopeId("data-v-16e8230f"), n = n(), popScopeId(), n);
 const _hoisted_1$1 = { class: "d-flex align-center flex-wrap ga-3 mb-4" };
 const _hoisted_2$1 = { class: "text-body-2 flex-grow-1" };
 const _hoisted_3$1 = {
@@ -2410,8 +2494,12 @@ const _sfc_main$1 = {
                             schema: section.items,
                             model: model.value[key],
                             choices: data.value.choices
-                          }, null, 8, ["schema", "model", "choices"])) : (openBlock(), createBlock(_sfc_main$6, {
+                          }, null, 8, ["schema", "model", "choices"])) : key === "logging" ? (openBlock(), createBlock(_sfc_main$4, {
                             key: 1,
+                            schema: section.items,
+                            model: model.value[key]
+                          }, null, 8, ["schema", "model"])) : (openBlock(), createBlock(_sfc_main$7, {
+                            key: 2,
                             schema: section.items,
                             model: model.value[key],
                             choices: data.value.choices
@@ -2639,7 +2727,7 @@ const _sfc_main$1 = {
     };
   }
 };
-const Settings = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-c5e96c54"]]);
+const Settings = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-16e8230f"]]);
 const _withScopeId = (n) => (pushScopeId("data-v-b9e4d79a"), n = n(), popScopeId(), n);
 const _hoisted_1 = { class: "d-flex align-center flex-wrap ga-3 mb-4" };
 const _hoisted_2 = /* @__PURE__ */ _withScopeId(() => /* @__PURE__ */ createBaseVNode("div", { class: "flex-grow-1" }, [
@@ -2791,7 +2879,7 @@ const _sfc_main = {
                     "hide-details": "",
                     class: "mb-5"
                   }, null, 8, ["modelValue", "items"])) : createCommentVNode("", true),
-                  tab.value === "overview" ? (openBlock(), createBlock(_sfc_main$c, {
+                  tab.value === "overview" ? (openBlock(), createBlock(_sfc_main$d, {
                     key: 2,
                     stats: overview.value.stats,
                     onBrowse: navigate
@@ -2916,6 +3004,7 @@ const vuetify = createVuetify({
     VTable,
     VTextField,
     VTextarea,
+    VExpandTransition,
     VExpandXTransition
   },
   icons: { defaultSet: "mdi", aliases, sets: { mdi } },

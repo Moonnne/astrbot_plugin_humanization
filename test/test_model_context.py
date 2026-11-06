@@ -13,6 +13,7 @@ from controller_helpers import plan_json
 from diary_helpers import model_change, topic_change
 from test_host_contract import Event, consume
 from test_host_contract import plugin as plugin
+from test_logging import entries
 
 from astrbot.api.message_components import Plain, Reply
 from astrbot.core.agent.context.compressor import LLMSummaryCompressor
@@ -160,16 +161,11 @@ async def test_native_writer_preserves_commands_excluded_from_inference(
         assert "old ordinary discussion" not in str(saved)
     assert "command_history" not in event.get_extra("humanization_turn")
     await plugin.log.flush()
-    records = [
-        json.loads(line)
-        for line in (plugin.log.directory / "runtime.log")
-        .read_text(encoding="utf-8")
-        .splitlines()
-    ]
-    counters = [row["data"] for row in records if row["event"] == "model.usage"]
+    records = entries(plugin.log.directory / "humanization.log")
+    counters = [row["data"] for row in records if row["event"] == "model.complete"]
     assert len(counters) == 1
     assert counters[0]["purpose"] == "main"
-    assert counters[0]["usage"]["input"] == 200
+    assert counters[0]["tokens_input"] == 200
     assert counters[0]["cache_ratio"] == 0.5
 
 
@@ -315,7 +311,7 @@ async def test_main_focus_only_deduplicates_exact_visible_message(plugin, observ
 
 
 async def test_auxiliary_debug_log_records_estimate_and_provider_usage(plugin):
-    plugin.log.debug_mode = True
+    plugin.log.level = "DEBUG"
     plugin.context.llm_generate = AsyncMock(
         return_value=LLMResponse(
             role="assistant",
@@ -328,18 +324,22 @@ async def test_auxiliary_debug_log_records_estimate_and_provider_usage(plugin):
         == "reply"
     )
     await plugin.log.flush()
-    rows = [
-        json.loads(line)
-        for line in (plugin.log.directory / "dev.log")
-        .read_text(encoding="utf-8")
-        .splitlines()
-    ]
-    assert rows[-2]["data"]["estimated_input"] > 0
-    assert rows[-1]["data"]["usage"] == {
-        "input": 100,
-        "input_cached": 75,
-        "output": 5,
-        "total": 105,
+    rows = entries(plugin.log.directory / "humanization.log")
+    data = next(row["data"] for row in rows if row["event"] == "model.complete")
+    assert data["estimated_input"] > 0
+    assert {
+        key: data[key]
+        for key in (
+            "tokens_input",
+            "tokens_input_cached",
+            "tokens_output",
+            "tokens_total",
+        )
+    } == {
+        "tokens_input": 100,
+        "tokens_input_cached": 75,
+        "tokens_output": 5,
+        "tokens_total": 105,
     }
 
 
@@ -348,7 +348,7 @@ async def test_auxiliary_debug_log_records_estimate_and_provider_usage(plugin):
 async def test_auxiliary_call_counters_are_file_only_in_both_modes(
     plugin, debug, purpose
 ):
-    plugin.log.debug_mode = debug
+    plugin.log.level = "DEBUG" if debug else "INFO"
     plugin.log.console = Mock()
     plugin.context.llm_generate = AsyncMock(
         return_value=LLMResponse(
@@ -369,25 +369,28 @@ async def test_auxiliary_call_counters_are_file_only_in_both_modes(
         "provider", "private rules", "private input", purpose=purpose
     )
     await plugin.log.flush()
-    rows = [
-        json.loads(line)
-        for line in (plugin.log.directory / "runtime.log")
-        .read_text(encoding="utf-8")
-        .splitlines()
-    ]
-    records = [row["data"] for row in rows if row["event"] == "model.usage"]
+    rows = entries(plugin.log.directory / "humanization.log")
+    records = [row["data"] for row in rows if row["event"] == "model.complete"]
     assert len(records) == 1
     record = records[0]
     assert record["purpose"] == purpose
     assert record["estimated_input"] > 0
-    assert record["usage"] == {
-        "input": 100,
-        "input_cached": 80,
-        "output": 5,
-        "total": 105,
+    assert {
+        key: record[key]
+        for key in (
+            "tokens_input",
+            "tokens_input_cached",
+            "tokens_output",
+            "tokens_total",
+        )
+    } == {
+        "tokens_input": 100,
+        "tokens_input_cached": 80,
+        "tokens_output": 5,
+        "tokens_total": 105,
     }
     assert record["cache_ratio"] == 0.8 and record["cache_source"] == "provider"
-    assert record["provider_details"]["cache_miss"] == 20
+    assert record["provider_cache_miss"] == 20
     assert "private" not in str(record)
     assert plugin.log.console.mock_calls == []
 
@@ -399,14 +402,9 @@ async def test_failed_auxiliary_call_records_status_without_fake_usage(plugin, e
     with pytest.raises(error):
         await plugin.adapter.generate("provider", "rules", "input", purpose="recorder")
     await plugin.log.flush()
-    rows = [
-        json.loads(line)
-        for line in (plugin.log.directory / "runtime.log")
-        .read_text(encoding="utf-8")
-        .splitlines()
-    ]
-    record = [row["data"] for row in rows if row["event"] == "model.usage"][0]
-    assert record["usage"] is None and record["cache_ratio"] is None
+    rows = entries(plugin.log.directory / "humanization.log")
+    record = [row["data"] for row in rows if row["event"] == "model.complete"][0]
+    assert record.get("tokens_input") is None and record["cache_ratio"] is None
     assert record["status"] == (
         "cancelled" if error.__name__ == "CancelledError" else "error"
     )
@@ -451,15 +449,10 @@ async def test_native_step_counters_are_logged_once_and_not_cumulatively_twice(p
     plugin.adapter.record_main_usage(event)
     plugin.adapter.record_main_usage(event)
     await plugin.log.flush()
-    rows = [
-        json.loads(line)
-        for line in (plugin.log.directory / "runtime.log")
-        .read_text(encoding="utf-8")
-        .splitlines()
-    ]
-    records = [row["data"] for row in rows if row["event"] == "model.usage"]
-    assert [record["usage"]["input"] for record in records] == [100, 200]
-    assert [record["usage"]["output"] for record in records] == [5, 10]
+    rows = entries(plugin.log.directory / "humanization.log")
+    records = [row["data"] for row in rows if row["event"] == "model.complete"]
+    assert [record["tokens_input"] for record in records] == [100, 200]
+    assert [record["tokens_output"] for record in records] == [5, 10]
     assert all(record["scope"] == "native_step" for record in records)
 
 

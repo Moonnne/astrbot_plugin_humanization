@@ -317,7 +317,7 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
     config["prompts"]["behavior"] = ""
     config["prompts"]["group"] = "  "
     config["prompts"]["expression"] = "Existing custom expression"
-    config["logging"]["runtime_max_mb"] = 3
+    config["logging"]["max_mb"] = 3
     config.save_config()
     database = SimpleNamespace(
         get_umo_aliases=AsyncMock(
@@ -365,7 +365,7 @@ async def test_entrypoint_loads_schema_and_populates_group_choices(
             "group",
             "private",
         }
-        assert instance.runtime.log.limits["runtime.log"] == 3 * 1024**2
+        assert instance.runtime.log.max_bytes == 3 * 1024**2
     finally:
         await instance.terminate()
     assert all(task.done() for task in instance.runtime.tasks)

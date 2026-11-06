@@ -29,7 +29,12 @@ class DatabaseSession:
 
         rows = await self.complete(fetch())
         if self.log:
-            self.log.debug("database.query", query=sql, parameters=args, result=rows)
+            self.log.debug(
+                "database.query",
+                operation=sql.split()[0],
+                parameters_count=len(args),
+                row_count=len(rows),
+            )
         return rows
 
     async def execute(self, sql: str, args=()) -> WriteResult:

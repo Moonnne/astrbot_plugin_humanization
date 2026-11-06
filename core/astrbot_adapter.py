@@ -14,7 +14,7 @@ from astrbot.api.message_components import At, Plain, Poke, Reply
 from astrbot.core.agent.context.token_counter import EstimateTokenCounter
 from astrbot.core.agent.message import Message as AgentMessage
 from astrbot.core.agent.message import TextPart
-from astrbot.core.astr_main_agent import MainAgentBuildConfig, collect_initial_request
+from astrbot.core.astr_main_agent import MainAgentBuildConfig
 from astrbot.core.pipeline.process_stage.follow_up import _ACTIVE_AGENT_RUNNERS
 from astrbot.core.platform.astrbot_message import AstrBotMessage, MessageMember
 from astrbot.core.platform.message_session import MessageSession
@@ -30,6 +30,14 @@ from astrbot.core.star.session_llm_manager import SessionServiceManager
 from astrbot.core.star.session_plugin_manager import SessionPluginManager
 
 from ..models.message import Message
+
+try:
+    from astrbot.core.astr_main_agent.request import collect_initial_request
+except ModuleNotFoundError as exc:
+    if exc.name != "astrbot.core.astr_main_agent.request":
+        raise
+    # Earlier hosts keep the collector in the monolithic astr_main_agent module.
+    from astrbot.core.astr_main_agent import collect_initial_request
 
 
 class ScopeFilter(filter.CustomFilter):

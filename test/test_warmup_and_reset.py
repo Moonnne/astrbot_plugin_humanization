@@ -17,6 +17,7 @@ from humanization_test.main import Humanization
 from humanization_test.models.decision import Decision
 from test_host_contract import Event, consume
 from test_host_contract import plugin as plugin
+from test_logging import entries
 from test_management import admin_event
 from test_management import managed as managed
 from test_scheduling import Clock
@@ -412,10 +413,7 @@ async def test_failed_reset_all_releases_pause_and_reports_failure(managed):
     assert len(await managed.storage.rows("SELECT * FROM messages")) == 1
     await managed.log.flush()
     events = [
-        json.loads(line)["event"]
-        for line in (managed.log.directory / "runtime.log")
-        .read_text(encoding="utf-8")
-        .splitlines()
+        row["event"] for row in entries(managed.log.directory / "humanization.log")
     ]
     assert "admin.reset_all.failed" in events
 

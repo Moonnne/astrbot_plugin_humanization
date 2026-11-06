@@ -2,7 +2,6 @@
 
 import asyncio
 import copy
-import json
 import time
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -50,26 +49,17 @@ def managed(plugin):
     return plugin
 
 
-@pytest.mark.parametrize("debug", [False, True])
-async def test_log_clear_discards_queued_records_and_cannot_restore_them(
-    managed, debug
-):
-    managed.log.debug_mode = debug
-    name = "dev.log" if debug else "runtime.log"
+async def test_log_clear_discards_queued_records_and_cannot_restore_them(managed):
     managed.log.info("old.pending")
-    event = admin_event(
-        "/hum clear dev_log" if debug else "/hum clear log", private=True
-    )
-    assert await managed.admin.clear_log(event, "dev_log" if debug else "log") == "done"
-    path = managed.log.directory / name
-    assert path.read_bytes() == b""
+    event = admin_event("/hum clear log", private=True)
+    assert await managed.admin.clear_log(event, "log") == "done"
     managed.log.info("new.after_clear")
     await managed.log.flush()
-    assert [
-        json.loads(line)["event"]
-        for line in path.read_text(encoding="utf-8").splitlines()
-    ] == ["new.after_clear"]
-    managed.log.console.info.assert_called_once()
+    raw = (managed.log.directory / "humanization.log").read_text(encoding="utf-8")
+    assert "old.pending" not in raw
+    assert "new.after_clear" in raw and "admin.log.cleared" in raw
+    assert not managed.log.console.mock_calls
+    assert "已统一" in await managed.admin.clear_log(event, "dev_log")
 
 
 async def test_log_clear_permission_and_private_chat_restrictions(managed):
@@ -91,14 +81,17 @@ async def test_clear_reports_io_error_to_console_and_administrator(managed):
         admin_event("/hum clear log", private=True), "log"
     )
     assert result == "error: PermissionError"
-    managed.log.console.error.assert_called_once()
+    assert not managed.log.console.mock_calls
+    assert "admin.log.clear.failed" in (
+        managed.log.directory / "humanization.log"
+    ).read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("command", ["clear", "claer"])
 async def test_official_command_parser_accepts_log_command_and_requested_alias(
     managed, command
 ):
-    event = admin_event(f"hum {command} dev_log", private=True)
+    event = admin_event(f"hum {command} log", private=True)
     event.is_at_or_wake_command = True
     handler = next(
         entry

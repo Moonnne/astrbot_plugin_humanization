@@ -5,7 +5,7 @@ import json
 import time
 import uuid
 from contextlib import aclosing
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from astrbot.api import logger
@@ -32,57 +32,82 @@ class Runtime:
     def __init__(self, context, config: dict, data_dir: Path, console_logger=None):
         self.context = context
         self.config = config
-        self.settings = Settings(config)
+        # A bootstrap writer exists before configuration validation can fail.
         self.log = PluginLog(
             data_dir / "log",
-            self.settings.logging["debug"],
+            False,
             console_logger if console_logger is not None else logger,
-            self.settings.timezone,
-            runtime_max_mb=self.settings.logging["runtime_max_mb"],
-            dev_max_mb=self.settings.logging["dev_max_mb"],
+            timezone.utc,
+            mask=bool(config.get("logging", {}).get("mask", False)),
         )
-        self.adapter = AstrBotAdapter(context, self.settings, self.log)
-        self.generation = uuid.uuid4().hex
-        self.scheduler = Scheduler(
-            self.settings,
-            lambda event: self.context.get_event_queue().put_nowait(event),
-            self.generation,
-            self.log,
-        )
-        self.tasks = set()
-        self.active = set()
-        self.active_scopes = {}
-        self.record_locks = {}
-        self.reset_since = {}
-        self.reset_versions = {}
-        self.reset_lock = asyncio.Lock()
-        self.resetting_all = False
-        self.summary_task = None
-        self.closed = False
-        self.storage = Storage(
-            data_dir / "chat" / "db" / "chat.sqlite3",
-            self.settings.recorder["retention"],
-            self.log,
-        )
-        self.prompts = Prompts(
-            self.settings,
-            self.storage,
-            context.persona_manager,
-            self.adapter.is_robot_record,
-        )
-        self.controller = Controller(
-            self.settings, self.storage, self.adapter.generate, self.prompts, self.log
-        )
-        self.delivery = Delivery(self.storage, self.settings)
-        self.summarizer = Summarizer(
-            self.storage,
-            self.settings,
-            self.adapter.generate,
-            self.prompts.text["summary"],
-            self.log,
-            self.adapter.is_robot_record,
-        )
-        self.admin = Management(self)
+        try:
+            self.settings = Settings(config)
+            self.log = PluginLog(
+                data_dir / "log",
+                self.settings.logging["debug"],
+                console_logger if console_logger is not None else logger,
+                self.settings.timezone,
+                level=self.settings.logging["level"],
+                mask=self.settings.logging["mask"],
+                echo=self.settings.logging["echo"],
+                max_mb=self.settings.logging["max_mb"],
+            )
+            if self.log.level == "TRACK":
+                from ..utils.log_tracking import CallTracker
+
+                self.log.tracker = CallTracker(self.log)
+                self.log.tracker.install(__package__.rsplit(".", 1)[0])
+            self.adapter = AstrBotAdapter(context, self.settings, self.log)
+            self.generation = uuid.uuid4().hex
+            self.scheduler = Scheduler(
+                self.settings,
+                lambda event: self.context.get_event_queue().put_nowait(event),
+                self.generation,
+                self.log,
+            )
+            self.tasks = set()
+            self.active = set()
+            self.active_scopes = {}
+            self.record_locks = {}
+            self.reset_since = {}
+            self.reset_versions = {}
+            self.reset_lock = asyncio.Lock()
+            self.resetting_all = False
+            self.summary_task = None
+            self.closed = False
+            self.storage = Storage(
+                data_dir / "chat" / "db" / "chat.sqlite3",
+                self.settings.recorder["retention"],
+                self.log,
+            )
+            self.prompts = Prompts(
+                self.settings,
+                self.storage,
+                context.persona_manager,
+                self.adapter.is_robot_record,
+            )
+            self.controller = Controller(
+                self.settings,
+                self.storage,
+                self.adapter.generate,
+                self.prompts,
+                self.log,
+            )
+            self.delivery = Delivery(self.storage, self.settings)
+            self.summarizer = Summarizer(
+                self.storage,
+                self.settings,
+                self.adapter.generate,
+                self.prompts.text["summary"],
+                self.log,
+                self.adapter.is_robot_record,
+            )
+            self.admin = Management(self)
+        except Exception:
+            self.log.critical("runtime.initialize.failed")
+            if self.log.tracker:
+                self.log.tracker.close()
+            raise
 
     async def initialize(self):
         await self.log.open()
@@ -90,8 +115,8 @@ class Runtime:
             "runtime.start",
             debug=self.log.debug_mode,
             retention=self.settings.recorder["retention"],
-            runtime_max_mb=self.settings.logging["runtime_max_mb"],
-            dev_max_mb=self.settings.logging["dev_max_mb"],
+            level=self.settings.logging["level"],
+            max_mb=self.settings.logging["max_mb"],
             selected_sessions=len(
                 self.settings.scope["sessions"] + self.settings.scope["manual_sessions"]
             ),
@@ -105,8 +130,8 @@ class Runtime:
             for name in ("behavior", "expression", "group", "private"):
                 await self.prompts.fragment(name)
             await self.storage.open()
-        except Exception:
-            self.log.exception("runtime.initialize.failed")
+        except BaseException:
+            self.log.critical("runtime.initialize.failed")
             await self.log.close()
             raise
         ScopeFilter.settings = self.settings
@@ -123,6 +148,19 @@ class Runtime:
                 self.tasks.add(
                     asyncio.create_task(self.idle_loop(), name="humanization-idle")
                 )
+
+        for task in self.tasks:
+            task.add_done_callback(self._background_done)
+
+    def _background_done(self, task):
+        if task.cancelled() or self.closed:
+            return
+        try:
+            error = task.exception()
+            if error is not None:
+                raise error
+        except Exception:
+            self.log.critical("runtime.worker.stopped", task=task.get_name())
 
     async def observe(self, event: AstrMessageEvent):
         if (
@@ -561,7 +599,7 @@ class Runtime:
             if event.get_extra("humanization_scheduled")
             else None,
         )
-        self.log.info("context.prepare", run=turn["run"], context_chars=len(context))
+        self.log.debug("context.prepare", run=turn["run"], context_chars=len(context))
         self.adapter.inject_observation(
             request, context, turn["intent"], turn.get("planning"), turn.get("focus")
         )
@@ -888,22 +926,26 @@ class Runtime:
                         self.summary_loop(), name="humanization-summary"
                     )
                     self.tasks.add(self.summary_task)
+                    self.summary_task.add_done_callback(self._background_done)
 
     async def terminate(self):
         self.closed = True
-        self.adapter.robot_cache.clear()
-        self.scheduler.close()
-        self.admin.close()
-        if ScopeFilter.settings is self.settings:
-            ScopeFilter.settings = None
-        if ManagementAccessFilter.settings is self.settings:
-            ManagementAccessFilter.settings = None
-        tasks = self.tasks | self.active
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
         try:
+            self.adapter.robot_cache.clear()
+            self.scheduler.close()
+            self.admin.close()
+            if ScopeFilter.settings is self.settings:
+                ScopeFilter.settings = None
+            if ManagementAccessFilter.settings is self.settings:
+                ManagementAccessFilter.settings = None
+            tasks = self.tasks | self.active
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             await self.storage.close()
+        except BaseException:
+            self.log.critical("runtime.shutdown.failed")
+            raise
         finally:
             self.log.info("runtime.stop")
             await self.log.close()

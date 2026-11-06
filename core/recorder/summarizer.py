@@ -57,6 +57,9 @@ class Summarizer:
                     started = perf_counter()
                     try:
                         await self.summarize(session, pending)
+                    except asyncio.CancelledError:
+                        self.log.debug("summary.cancelled", conversation=session["umo"])
+                        raise
                     except Exception:
                         self.log.exception(
                             "summary.failed",
@@ -125,7 +128,9 @@ class Summarizer:
             return
         self.log.info(
             "summary.start",
-            conversation=self.log.identity(session["scope"]),
+            conversation=session["umo"]
+            if session["private"]
+            else f"{session['platform']}:GroupMessage:{session['group_id']}",
             pending_count=len(selected),
             cursor=session["cursor"],
         )

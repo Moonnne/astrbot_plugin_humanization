@@ -579,23 +579,49 @@
     "type": "object",
     "description": "日志设置",
     "items": {
+      "level": {
+        "type": "string",
+        "description": "日志等级",
+        "default": "INFO",
+        "options": [
+          "DEBUG",
+          "INFO",
+          "WARNING",
+          "ERROR",
+          "CRITICAL",
+          "TRACK"
+        ],
+        "hint": "默认 INFO。TRACK 仅在调试模式开启时可用，逐函数追踪开销较大，建议临时排障使用；关闭调试后自动回到 INFO。"
+      },
+      "max_mb": {
+        "type": "float",
+        "description": "humanization.log 大小上限（MB）",
+        "default": 10,
+        "hint": "UTF-8 字节容量，默认 10 MB，保留 3 份轮转备份；0 表示不限大小。"
+      },
       "debug": {
         "type": "bool",
-        "description": "启用调试模式",
+        "description": "调试模式",
         "default": false,
-        "hint": "普通模式：核心日志输出到 AstrBot 控制台及 runtime.log。调试模式：详细日志写入 dev.log，不向控制台输出。模型用量与缓存摘要在两种模式下均写入 runtime.log，不回显控制台。两份文件按下方容量保留最新完整日志行。调试日志包含聊天及模型内容，已知凭据字段及常见密钥格式会脱敏。保存重载后生效。"
+        "hint": "展开高级日志设置并解锁 TRACK。仅开启此开关不会提高日志详细程度；子选项保存后独立生效。"
       },
-      "runtime_max_mb": {
-        "type": "float",
-        "description": "runtime.log 大小上限（MB）",
-        "default": 5,
-        "hint": "按 UTF-8 文件实际字节数滚动，1 MB = 1024 × 1024 字节。0 表示无限制，支持小数，不允许负数。保存重载后生效；超过容量时丢弃最早的完整日志行。"
+      "mask": {
+        "type": "bool",
+        "description": "数据脱敏",
+        "default": false,
+        "condition": {
+          "debug": true
+        },
+        "hint": "遮盖会话号、发言人和聊天内容的中间部分；UMO 实例名与类型保留。文件和控制台使用相同处理；关闭调试后仍按保存值生效。"
       },
-      "dev_max_mb": {
-        "type": "float",
-        "description": "dev.log 大小上限（MB）",
-        "default": 10,
-        "hint": "调试日志的存储容量，单位与 runtime.log 相同。0 表示无限制，支持小数，不允许负数。保存重载后生效，包括裁剪已有日志；增大上限不会恢复已丢弃的记录。"
+      "echo": {
+        "type": "bool",
+        "description": "日志回显",
+        "default": false,
+        "condition": {
+          "debug": true
+        },
+        "hint": "将插件日志转发至 AstrBot 控制台，仍受宿主等级过滤。TRACK 以 DEBUG + [TRACK] 显示；关闭调试后仍按保存值生效。"
       }
     }
   }

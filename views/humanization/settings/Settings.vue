@@ -3,6 +3,7 @@ import { ref, computed, inject, onMounted, onBeforeUnmount, watch } from 'vue';
 import { mdiContentSaveOutline, mdiRefresh, mdiAlertCircleOutline, mdiDeleteAlertOutline, mdiChevronLeft, mdiMenu, mdiAccountGroupOutline, mdiEyeOutline, mdiHeadCogOutline, mdiMessageTextOutline, mdiShieldAccountOutline, mdiTextBoxOutline } from '@mdi/js';
 import SchemaFields from './SchemaFields.vue';
 import ScopeSettings from './ScopeSettings.vue';
+import LogSettings from './LogSettings.vue';
 import PromptEditor from '../prompts/PromptEditor.vue';
 const props = defineProps({ promptsOnly:Boolean });
 const bridge = inject('bridge');
@@ -105,7 +106,7 @@ defineExpose({dirty,saving:busy,save});
         <div class="settings-grid">
     <v-card v-for="[key,section] in sections" :key="key" :id="`setting-${key}`" tag="section" :aria-label="section.description" rounded="xl">
       <v-card-title tag="h2" class="text-h6 pa-5 text-wrap">{{ section.description }}</v-card-title>
-      <v-card-text><ScopeSettings v-if="key === 'scope'" :schema="section.items" :model="model[key]" :choices="data.choices" /><SchemaFields v-else :schema="section.items" :model="model[key]" :choices="data.choices" /></v-card-text>
+      <v-card-text><ScopeSettings v-if="key === 'scope'" :schema="section.items" :model="model[key]" :choices="data.choices" /><LogSettings v-else-if="key === 'logging'" :schema="section.items" :model="model[key]" /><SchemaFields v-else :schema="section.items" :model="model[key]" :choices="data.choices" /></v-card-text>
     </v-card>
         </div>
     <v-card id="setting-danger" tag="section" aria-label="危险操作区" color="error" variant="outlined" class="my-6" rounded="xl">

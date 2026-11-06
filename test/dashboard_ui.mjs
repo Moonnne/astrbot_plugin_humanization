@@ -240,6 +240,35 @@ try {
   await expect(view.getByText('已删除 2 条聊天记录',{exact:true})).toBeVisible();
   await view.getByRole('tab',{name:'设置',exact:true}).click();
   await expect(view.getByRole('heading',{name:'Controller 聊天行为规划与控制',exact:true})).toBeVisible();
+  if (process.argv.includes('--logging-settings')) {
+    const logging = view.locator('#setting-logging');
+    await logging.scrollIntoViewIfNeeded();
+    await expect(logging.getByLabel('数据脱敏',{exact:true})).toHaveCount(0);
+    await logging.getByLabel('日志等级',{exact:true}).press('Enter');
+    await expect(view.getByRole('option',{name:'TRACK',exact:true})).toHaveCount(0);
+    await view.getByRole('option',{name:'DEBUG',exact:true}).click();
+    await logging.getByLabel('调试模式',{exact:true}).check();
+    await expect(logging.getByLabel('数据脱敏',{exact:true})).toBeVisible();
+    await logging.getByLabel('日志等级',{exact:true}).press('Enter');
+    await view.getByRole('option',{name:'TRACK',exact:true}).click();
+    await logging.getByLabel('数据脱敏',{exact:true}).check();
+    await logging.getByLabel('日志回显',{exact:true}).check();
+    await expect(view.getByRole('option',{name:'TRACK',exact:true})).toBeHidden();
+    await iframe.evaluate(async () => {
+      await Promise.all(document.getAnimations().filter(a=>a.effect.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));
+    });
+    await page.screenshot({path:join(output,'logging-settings.png'),animations:'disabled'});
+    await logging.getByLabel('调试模式',{exact:true}).uncheck();
+    await expect(logging).toContainText('INFO');
+    await expect(logging.getByLabel('数据脱敏',{exact:true})).toHaveCount(0);
+    await view.getByRole('button',{name:'保存并重载',exact:true}).click();
+    await view.getByRole('button',{name:'确认保存',exact:true}).click();
+    await expect.poll(()=>page.evaluate(()=>window.saved?.config?.logging)).toEqual({
+      level:'INFO',max_mb:10,debug:false,mask:true,echo:true,
+    });
+    await page.evaluate(()=>window.saved=null);
+    console.log('Logging level, TRACK unlock and persistent independent switches verified.');
+  }
   if (process.argv.includes('--scope-policy')) {
     const white = view.getByRole('region',{name:'会话白名单',exact:true});
     const black = view.getByRole('region',{name:'会话黑名单',exact:true});

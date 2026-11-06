@@ -113,7 +113,7 @@ Controller 的用户输入按“观察说明 → 话题 → 滚动消息 → 最
 
 主模型的规划焦点消息如果与本轮观察中的一条消息完全相同，仅发送 `message_id` 引用，由同轮观察提供正文。窗口外或内容不同的焦点继续发送完整快照，话题焦点也保留；不按文本猜测与原生历史的对应关系。所有观察与规划仍为临时内容，轮次结束不写回原生历史，原生压缩及工具循环不变。
 
-缓存优化验证使用隔离的真实组装路径，比较连续请求的公共前缀，并检查消息窗口、焦点信息和临时标记。字符前缀增长不是提供商实际 Token 命中率。上线后按 `runtime.log` 的 `model.usage.purpose` 区分 `controller`、`main`、`format_repair`，分别用已报告缓存字段的调用计算 `sum(usage.input_cached) / sum(usage.input)`，同时比较输入总量与调用次数；未知用量不按零处理。DeepSeek 的缓存自动开启、尽力命中且需要前缀落盘，详见[官方缓存说明](https://api-docs.deepseek.com/zh-cn/guides/kv_cache/)。
+缓存优化验证使用隔离的真实组装路径，比较连续请求的公共前缀，并检查消息窗口、焦点信息和临时标记。字符前缀增长不是提供商实际 Token 命中率。上线后按 `humanization.log` 完成事件中的 `purpose` 区分 `controller`、`main`、`format_repair`，分别用已报告缓存字段的调用计算 `sum(tokens_input_cached) / sum(tokens_input)`，同时比较输入总量与调用次数；未知用量不按零处理。DeepSeek 的缓存自动开启、尽力命中且需要前缀落盘，详见[官方缓存说明](https://api-docs.deepseek.com/zh-cn/guides/kv_cache/)。
 
 ### 指令过滤
 
@@ -230,25 +230,22 @@ Controller／主模型观察和 Recorder 摘要通过同一身份查询筛选已
 
 ## 日志与调用统计
 
-控制台使用 AstrBot 插件 logger，文件通过 `PluginLog` 异步队列写入，不替换全局 Handler。每条记录为 UTF-8／CRLF JSON，正文换行和异常堆栈转义在字段中。
+PluginLog 是唯一日志入口，不安装全局 Handler，不更改宿主 logger 阈值。采用 AstrBot 文件格式：时间（毫秒）、插件名、等级缩写、警告及以上的宿主版本、模块／行号、业务消息。UTF-8／CRLF；普通记录单行，异常另附有限堆栈，不输出源码行及局部变量。记录通过有界队列进入独立后台线程；ERROR／CRITICAL 同步排空此前记录并落盘。容量默认 10 MiB、3 个备份，旧 dev.log／runtime.log 保留不再写入。
 
-| 模式 | 控制台 | runtime.log | dev.log |
-| --- | --- | --- | --- |
-| 普通 | 核心动作与异常类型，模型用量不回显 | 核心日志和模型用量 | 不新增 |
-| 调试 | 本插件不输出 | 模型用量摘要 | 核心、用量及完整调试详情 |
+等级顺序 TRACK < DEBUG < INFO < WARNING < ERROR < CRITICAL，默认 INFO。TRACK 需调试模式开启；关闭调试时回到 INFO。脱敏与回显默认关闭、独立生效，调试开关只控制高级选项展示与 TRACK 可用性。回显保留来源位置，走 AstrBot 的专属 logger 和原生 LogBroker；TRACK 映射 DEBUG + [TRACK]，不冒充原生第六级，不覆盖宿主设置。
 
-文件默认上限 5／10 MB，0 无限制，按实际 UTF-8 字节数保留最新完整 JSON 行。单条记录超过上限时跳过，不截断 JSON 或中文；加载时也裁剪已有超限文件。关闭等待队列完成，写盘失败仅向宿主报告一次错误类型。
+- `gate.start/complete/failed`：Controller 的会话、回复决定、情绪、原因摘要、观察数量与耗时；无模型调用的门控跳过是 DEBUG。
+- `summary.start/complete/failed`：Recorder 的会话、实际整理条数、重叠上下文、新增／更新话题数和耗时；成功仅在提交后记录，失败明确提交 0 条。
+- `reply.start/complete/failed`：主回复生成和发送流程，原生发送钩子完成不等于 QQ 已读／到达凭据。
+- 辅助模型 `purpose=controller/recorder` 的用量通过操作 ContextVar 合并到完成／失败事件；主模型、格式修复等以 `model.complete` 记录，保留缺失值，未报告不能按零计算。
 
-- `summary.complete`：会话、实际新整理条数、包含重叠的输入条数、耗时、新增／更新话题数；仅在提交成功后输出。
-- `summary.failed`：会话、耗时、错误类型、成功提交条数 0、候选条数；候选数不当作实际输入数。
-- `gate.complete`：会话、reply／wait、主情绪及强度、参与方式、耗时。reason、guidance 与正文仅在调试日志记录。
-- `model.usage`：Controller、Recorder、格式修复每次调用及原生主模型可观察步骤的用量。普通与调试模式均写入 runtime.log，调试模式同时写 dev.log，不打印控制台。
+用量字段包含 estimated_input、tokens_input、tokens_input_cached、tokens_output、tokens_total、cache_ratio、提供商计数与状态。估计采用宿主启发式，不含工具 schema，不作计费依据。主模型 scope=native_step 为可观察增量；同一次模型请求的多个工具不重复计数。宿主内部重试、压缩等没有插件级逐次统计，不宣称覆盖全部成本。
 
-用量字段含 `estimated_input`、`usage.input`、`usage.input_cached`、`usage.output`、`usage.total`、`cache_ratio`、提供商／响应 ID、状态和辅助调用耗时。估计采用宿主启发式，不含工具 schema，不作计费依据。提供商原始详情只取已知数值字段，缓存字段优先级和来源显式记录；缺失为 null，不能将未报告缓存理解为没有缓存。
+TRACK 只在选中后安装可撤销包装，覆盖当时已加载的插件模块函数、方法及已注册事件入口；不全局 profile、不追踪第三方库、日志自身、动态局部闭包或解释器生成函数。包装保留签名和装饰器属性，异步完成、生成器 send／throw／close 与取消按原语义传播；参数只记录数量，结果只记录类型／数量。卸载时还原被替换引用。普通等级不安装包装。
 
-主模型通过原生 Runner 和工具钩子记录 `scope=native_step` 增量，同一次模型请求的多个工具不重复计数；辅助模型为 `scope=call`。宿主内部重试、工具参数补全及压缩模型不具备相同逐次统计，不宣称全部覆盖。接入代码集中在宿主适配模块，只读访问原生 Runner 信息。
+先过滤等级，再摘要和脱敏。未知对象只记录类型，容器有深度与条数上限，文本有长度上限；始终删除已知凭据和二进制内容。可选业务脱敏保留 UMO 实例／类型，只遮盖会话号；名字／自由文本按首尾可见、中间星号处理，短文本例外：1 字不变、2 字首字加 **、3 字首尾可见、4 字中间 **。这是可读性脱敏，非匿名化。
 
-普通日志不记录聊天正文、日记、完整提示词或凭据；调试日志记录详细资料但脱敏已知凭据并省略二进制，分享前仍须检查。运行数据库、日志与密钥不提交 Git。
+队列满时低等级记录可丢弃并汇总告警，重要记录走同步路径；启动配置错误、长期后台任务失败和关闭错误均有兜底。文件不可写时向 stderr 报告一次紧急错误，不递归进入日志系统。正常关闭排空队列；不接管宿主全局异常／信号处理，不承诺断电或强杀时的最后一条持久化。`/hum clear log` 排空已有记录后清空活动文件，备份不动，旧 dev_log 参数提示新命令。
 
 ## 嵌入式管理视图
 

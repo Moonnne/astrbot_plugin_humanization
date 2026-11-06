@@ -24,7 +24,7 @@ import { VSwitch } from 'vuetify/components/VSwitch';
 import { VTable } from 'vuetify/components/VTable';
 import { VTextField } from 'vuetify/components/VTextField';
 import { VTextarea } from 'vuetify/components/VTextarea';
-import { VExpandXTransition } from 'vuetify/components/transitions';
+import { VExpandTransition, VExpandXTransition } from 'vuetify/components/transitions';
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg';
 import { zhHans } from 'vuetify/locale';
 import 'vuetify/styles';
@@ -36,7 +36,7 @@ const vuetify = createVuetify({
     VApp, VAlert, VAutocomplete, VBtn, VCard, VCardActions, VCardText, VCardTitle,
     VChip, VCheckboxBtn, VCombobox, VDataTableServer, VDialog, VDivider, VIcon, VMain, VList, VListItem, VMenu,
     VProgressLinear, VContainer, VRow, VCol, VSpacer, VSelect, VSlider,
-    VSnackbar, VSwitch, VTable, VTextField, VTextarea, VExpandXTransition,
+    VSnackbar, VSwitch, VTable, VTextField, VTextarea, VExpandTransition, VExpandXTransition,
   },
   icons: { defaultSet: 'mdi', aliases, sets: { mdi } },
   locale: { locale: 'zhHans', messages: { zhHans } },

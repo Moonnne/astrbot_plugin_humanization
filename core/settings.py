@@ -88,7 +88,7 @@ class Settings:
             <= self.controller["wait_max_seconds"]
         ):
             raise ValueError("Require 0 < minimum scheduling wait <= maximum wait")
-        for key in ("runtime_max_mb", "dev_max_mb"):
+        for key in ("max_mb",):
             limit = self.logging[key]
             if (
                 isinstance(limit, bool)
@@ -97,6 +97,17 @@ class Settings:
                 or limit < 0
             ):
                 raise ValueError("Log size limits must be finite non-negative numbers")
+        if self.logging["level"] not in (
+            "TRACK",
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL",
+        ):
+            raise ValueError("Unknown log level")
+        if not self.logging["debug"] and self.logging["level"] == "TRACK":
+            self.logging["level"] = "INFO"
         for key, minimum in (("context_topics", 0), ("topic_context_chars", 1)):
             if type(self.controller[key]) is not int or self.controller[key] < minimum:
                 raise ValueError(f"{key} must be an integer >= {minimum}")
