@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE UNIQUE INDEX IF NOT EXISTS messages_source ON messages(scope, direction, message_id)
     WHERE message_id != '';
 CREATE INDEX IF NOT EXISTS messages_recent ON messages(scope, seq);
+CREATE INDEX IF NOT EXISTS messages_timeline ON messages(scope, sent_at, id);
 CREATE TABLE IF NOT EXISTS diary_days (
     scope TEXT NOT NULL, day TEXT NOT NULL,
     through_seq INTEGER NOT NULL, created_at REAL NOT NULL,

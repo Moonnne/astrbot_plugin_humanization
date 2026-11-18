@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, watch, inject, onBeforeUnmount } from 'vue';
-import { mdiFilterVariant, mdiDeleteOutline, mdiEyeOutline } from '@mdi/js';
+import { mdiArrowLeft, mdiFilterVariant, mdiDeleteOutline, mdiEyeOutline } from '@mdi/js';
 import JsonValue from '../shared/JsonValue.vue';
 import ChatMessages from './ChatMessages.vue';
 import FilterPanel from './FilterPanel.vue';
@@ -15,15 +15,28 @@ const filters = reactive({...defaults, sessions:[]});
 const filtersOpen = ref(true);
 const currentChat = ref(null);
 const grouped = computed(() => props.category === 'messages' && !currentChat.value);
+const nextCursor = ref(null);
+const sentinel = ref(null);
+let observer;
+watch(sentinel, element => {
+  observer?.disconnect();
+  if (element) {
+    observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting) && !loading.value) load(true);
+    }, {rootMargin:'160px'});
+    observer.observe(element);
+  }
+}, {flush:'post'});
 function openChat(chat) {
   currentChat.value = chat;
+  if (chat && !filters.sort.startsWith('timestamp:')) filters.sort = 'timestamp:desc';
   page.value = 1;
   rows.value = []; selected.value = []; total.value = 0;
-  ++generation; clearTimeout(timer); load();
+  queue(0);
 }
 const sessionTitles = computed(() => Object.fromEntries(props.sessions.map(item => [item.umo,item.title !== item.umo ? item.title : item.umo.split(':').slice(2).join(':')])));
 const defaultWidths = {
-  timestamp:168, conversation:172, headline:216, state:props.category === 'topics' ? 96 : 132, day:128, actions:88,
+  timestamp:168, conversation:172, headline:216, state:props.category === 'topics' ? 96 : 132, day:128, message_count:120, actions:88,
   ...(props.category === 'decisions' && {timestamp:152, conversation:144, headline:172, decision:84, emotion:84, state:124}),
 };
 const widths = reactive({...defaultWidths});
@@ -42,7 +55,11 @@ async function preview(resource) {
 }
 let generation = 0, timer;
 const titles = { messages:'聊天记录', decisions:'最近反应', topics:'话题', diaries:'日记' };
-const headers = computed(() => [
+const headers = computed(() => grouped.value ? [
+  {title:'会话', key:'conversation', width:widths.conversation},
+  {title:'消息数', key:'message_count', width:widths.message_count},
+  {title:'最近消息', key:'timestamp', width:widths.timestamp},
+] : [
   { title:'时间', key:'timestamp', width:widths.timestamp }, { title:'会话', key:'conversation', width:widths.conversation },
   { title:props.category === 'decisions' ? '规划原因' : '内容', key:'headline', width:widths.headline },
   ...(props.category === 'decisions' ? [
@@ -55,38 +72,45 @@ const headers = computed(() => [
 ]);
 const tableWidth = computed(() => headers.value.reduce((sum, column) => sum + column.width, 48));
 const sortChoices = computed(() => {
-  const columns = props.category === 'messages' ? headers.value.slice(0,1) : headers.value.filter(col => col.sortable !== false);
+  const columns = currentChat.value ? headers.value.slice(0,1) : headers.value.filter(col => col.sortable !== false);
   return columns.flatMap(({title,key}) => {
     const [asc,desc] = key === 'timestamp' ? ['从旧到新','从新到旧'] : ['正序','倒序'];
     return [{value:`${key}:desc`,title:`${title}：${desc}`}, {value:`${key}:asc`,title:`${title}：${asc}`}];
   });
 });
 function time(value) { return new Date(value * 1000).toLocaleString('zh-CN', { timeZone:props.timezone, hour12:false }); }
-async function load() {
+async function load(append = false) {
   const current = ++generation;
-  loading.value = true; error.value = ''; selected.value = [];
+  loading.value = true; error.value = '';
+  if (!append) { selected.value = []; nextCursor.value = null; }
   try {
     const [key,order] = filters.sort.split(':');
-    const data = await bridge.apiGet('records', {...filters, sessions:JSON.stringify(filters.sessions), category:props.category, grouped:grouped.value ? '1':'0', scope:currentChat.value?.scope || '', page:page.value, limit:limit.value, sort:key, order});
+    const data = await bridge.apiGet('records', {...filters, sessions:JSON.stringify(filters.sessions), category:props.category, grouped:grouped.value ? '1':'0', scope:currentChat.value?.scope || '', page:page.value, limit:currentChat.value ? 50 : limit.value, feed:currentChat.value ? '1' : '0', cursor:append ? nextCursor.value : '', sort:key, order});
     if (current !== generation) return;
-    rows.value = data.items; total.value = data.total;
+    rows.value = append ? [...rows.value,...data.items] : data.items;
+    if (!append) total.value = data.total;
+    nextCursor.value = data.cursor || null;
+    if (currentChat.value) return;
     const lastPage = Math.max(1, Math.ceil(data.total / limit.value));
     if (page.value > lastPage) page.value = lastPage;
   } catch (e) { if (current === generation) error.value = e.message; }
   finally { if (current === generation) loading.value = false; }
 }
-function queue() { clearTimeout(timer); timer = setTimeout(load, 200); }
+function queue(delay = 200) {
+  ++generation; loading.value = true; nextCursor.value = null;
+  clearTimeout(timer); timer = setTimeout(load, delay);
+}
 watch(filters, () => { page.value = 1; queue(); }, {deep:true});
-watch([page,limit,() => props.refresh], queue);
+watch([page,limit,() => props.refresh], () => queue());
 queue();
-onBeforeUnmount(() => { clearTimeout(timer); generation++; });
+onBeforeUnmount(() => { observer?.disconnect(); clearTimeout(timer); generation++; });
 function removeOne(row) { selected.value = [row.key]; confirm.value = true; }
 async function remove() {
   deleting.value = true; error.value = '';
   try {
-    const result = await bridge.apiPost('records/delete', {category:props.category, keys:[...selected.value]});
+    const result = await bridge.apiPost('records/delete', {category:grouped.value ? 'sessions' : props.category, keys:[...selected.value]});
     confirm.value = false; detail.value = null;
-    success.value = `已删除 ${result.deleted} 条${titles[props.category]}`;
+    success.value = grouped.value ? `已删除 ${result.deleted} 个会话` : `已删除 ${result.deleted} 条${titles[props.category]}`;
     await load(); emit('changed');
   } catch (e) { error.value = e.message; confirm.value = false; }
   finally { deleting.value = false; }
@@ -103,11 +127,9 @@ const detailFields = computed(() => {
   <v-alert v-if="error" type="error" variant="tonal" class="mb-4">{{ error }}</v-alert>
   <v-alert v-if="success" type="success" variant="tonal" closable class="mb-4" @click:close="success = ''">{{ success }}</v-alert>
   <div class="d-flex align-center flex-wrap ga-3 mb-4">
-    <v-btn v-if="currentChat" variant="text" @click="openChat(null)">返回会话</v-btn>
-    <strong v-if="currentChat" class="session-name">{{ sessionTitles[currentChat.conversation] || currentChat.conversation }}</strong>
     <v-btn :prepend-icon="mdiFilterVariant" :aria-expanded="filtersOpen" aria-controls="record-filters" @click="filtersOpen = !filtersOpen">{{ filtersOpen ? '隐藏筛选' : '显示筛选' }}</v-btn>
-    <div class="text-body-2 text-medium-emphasis flex-grow-1">共 {{ total }} {{ grouped ? "个会话" : "条" }} <span v-if="!grouped">· 已选 {{ selected.length }} 条（当前页）</span></div>
-    <v-btn v-if="!grouped" color="error" :prepend-icon="mdiDeleteOutline" :disabled="!selected.length || loading" @click="confirm = true">删除所选</v-btn>
+    <div class="text-body-2 text-medium-emphasis flex-grow-1">共 {{ total }} {{ grouped ? "个会话" : "条" }} <span>· 已选 {{ selected.length }} {{ grouped ? "个" : "条" }}（{{ currentChat ? "已加载" : "当前页" }}）</span></div>
+    <v-btn color="error" :prepend-icon="mdiDeleteOutline" :disabled="!selected.length || loading" @click="confirm = true">{{ grouped ? '删除所选会话' : '删除所选' }}</v-btn>
   </div>
   <div class="records-layout">
     <v-expand-x-transition>
@@ -116,29 +138,28 @@ const detailFields = computed(() => {
       </div>
     </v-expand-x-transition>
     <v-card class="records-list" rounded="xl">
-    <template v-if="category === 'messages'">
+    <template v-if="currentChat">
+      <header class="d-flex align-center ga-2 pa-3">
+        <v-btn variant="text" :prepend-icon="mdiArrowLeft" @click="openChat(null)">返回会话</v-btn>
+        <strong class="session-name">{{ sessionTitles[currentChat.conversation] || currentChat.conversation }}</strong>
+      </header>
+      <v-divider />
+      <v-checkbox-btn label="选择已加载消息" :model-value="!!rows.length && selected.length === rows.length" @update:model-value="selected = $event ? rows.map(row=>row.key) : []" />
+      <ChatMessages v-model="selected" :rows="rows" :time="time" @detail="detail = $event" @remove="removeOne" />
       <v-progress-linear v-if="loading" indeterminate />
-      <v-list v-if="grouped" aria-label="会话">
-        <v-list-item v-for="chat in rows" :key="chat.scope" :title="sessionTitles[chat.conversation] || chat.conversation.split(':').slice(2).join(':')" :subtitle="sessionLabel(chat.conversation, sessionTitles[chat.conversation]) + ' · ' + chat.message_count + ' 条'" @click="openChat(chat)">
-          <template #append><small>{{ time(chat.timestamp) }}</small></template>
-        </v-list-item>
-      </v-list>
-      <div v-else>
-        <v-checkbox-btn label="选择当前页" :model-value="!!rows.length && selected.length === rows.length" @update:model-value="selected = $event ? rows.map(row=>row.key) : []" />
-        <ChatMessages v-model="selected" :rows="rows" :time="time" @detail="detail = $event" @remove="removeOne" />
-      </div>
-      <p v-if="!loading && !rows.length" class="pa-4 text-medium-emphasis">没有符合条件的记录</p>
-      <div class="d-flex align-center justify-center ga-3 pa-2">
-        <v-btn variant="text" :disabled="page <= 1" @click="page--">上一页</v-btn>
-        {{ page }} / {{ Math.max(1, Math.ceil(total / limit)) }}
-        <v-btn variant="text" :disabled="page * limit >= total" @click="page++">下一页</v-btn>
-      </div>
+      <v-btn v-else-if="error" variant="text" @click="load(!!nextCursor)">重新加载</v-btn>
+      <div v-else-if="nextCursor" ref="sentinel" style="height:1px"></div>
+      <p v-else-if="!rows.length" class="pa-4 text-medium-emphasis">没有符合条件的记录</p>
     </template>
-    <v-data-table-server v-else v-model="selected" v-model:page="page" v-model:items-per-page="limit" v-model:sort-by="sort" class="records-table" :style="{'--records-width':`${tableWidth}px`}" :headers="headers" :items="rows" :items-length="total" :loading="loading" :items-per-page-options="[10,25,50,100]" :mobile="false" item-value="key" show-select select-strategy="page" must-sort hover>
+    <v-data-table-server v-else v-model="selected" v-model:page="page" v-model:items-per-page="limit" v-model:sort-by="sort" class="records-table" :style="{'--records-width':`${tableWidth}px`}" :headers="headers" :items="rows" :items-length="total" :loading="loading" :items-per-page-options="[10,25,50,100]" :mobile="false" :item-value="grouped ? 'scope' : 'key'" show-select select-strategy="page" must-sort hover>
       <template #headers="controls"><ResizableHeaders v-bind="controls" :widths="widths" :defaults="defaultWidths" @resize="widths[$event.key] = $event.width" /></template>
       <template #item.timestamp="{item}">{{ time(item.timestamp) }}</template>
       <template #item.conversation="{item}">
-        <div class="text-body-2 text-truncate session-name" :title="`${sessionLabel(item.conversation,sessionTitles[item.conversation])}\n${item.conversation}`">{{ sessionTitles[item.conversation] || item.conversation.split(':').slice(2).join(':') }}</div>
+        <button v-if="grouped" type="button" class="text-start w-100 py-1" @click="openChat(item)">
+          <strong>{{ sessionTitles[item.conversation] || item.conversation.split(':').slice(2).join(':') }}</strong>
+          <small class="d-block text-medium-emphasis">{{ item.conversation }}</small>
+        </button>
+        <div v-else class="text-body-2 text-truncate session-name" :title="`${sessionLabel(item.conversation,sessionTitles[item.conversation])}\n${item.conversation}`">{{ sessionTitles[item.conversation] || item.conversation.split(':').slice(2).join(':') }}</div>
       </template>
       <template #item.headline="{item}"><div class="text-body-2 text-truncate record-headline" :title="item.headline">{{ item.headline }}</div></template>
       <template #item.decision="{item}">
@@ -174,9 +195,10 @@ const detailFields = computed(() => {
   <v-dialog v-model="confirm" max-width="540" :persistent="deleting">
     <v-card><v-card-title class="text-h6 pa-4 pb-0 pl-6">确认删除</v-card-title>
       <v-card-text>
-        将永久删除所选 {{ selected.length }} 条{{ titles[category] }}。
+        <p v-if="grouped">将永久删除所选 {{ selected.length }} 个会话的全部聊天、媒体文件、反应、回复记录、话题和日记，包括未命中当前筛选的内容。</p>
+        <p v-else>将永久删除所选 {{ selected.length }} 条{{ titles[category] }}。</p>
         <p v-if="category === 'diaries'" class="mt-3">这些日期下的话题会一并删除。</p>
-          <p v-if="category === 'messages'" class="mt-3">关联媒体文件及转述记录一并删除。已有日记仍保留，消息累计序号不回退。文件被占用时后台继续清理。当前群聊消息不足门槛时，会重新进入观察期。</p>
+          <p v-if="currentChat" class="mt-3">关联媒体文件及转述记录一并删除。已有日记仍保留，消息累计序号不回退。文件被占用时后台继续清理。当前群聊消息不足门槛时，会重新进入观察期。</p>
         <p class="mt-3">仅处理插件数据，不清除 AstrBot 原生对话。正在回复或整理时会拒绝删除，请稍后重试。</p>
       </v-card-text>
       <v-card-actions><v-spacer /><v-btn :disabled="deleting" @click="confirm = false">取消</v-btn><v-btn color="error" :loading="deleting" @click="remove">确认删除</v-btn></v-card-actions>
@@ -188,7 +210,7 @@ const detailFields = computed(() => {
 <style scoped>
 .records-layout { display: flex; align-items: flex-start; min-width: 0; }
 /* Animate the occupied width, including the gutter; keep controls at full width. */
-.filter-column { flex: 0 0 auto; width: 296px; min-width: 0; }
+.filter-column { position: sticky; top: 8px; max-height: calc(100dvh - 16px); overflow-y: auto; scrollbar-width: thin; flex: 0 0 auto; width: 296px; min-width: 0; }
 .filter-column :deep(.filter-panel) { width: 280px; }
 .filter-column.expand-x-transition-enter-active,
 .filter-column.expand-x-transition-leave-active { transition-duration: 180ms !important; }
@@ -199,7 +221,7 @@ const detailFields = computed(() => {
 .records-table :deep(th.record-actions) { z-index: 3 !important; }
 @media (max-width: 800px) {
   .records-layout { flex-direction: column; align-items: stretch; }
-  .filter-column { width: 100%; margin-bottom: 16px; }
+  .filter-column { width: 100%; max-height: 35dvh; z-index: 2; margin-bottom: 16px; }
   .filter-column :deep(.filter-panel) { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -86,8 +86,10 @@ class Media:
             raise ValueError("Invalid managed resource path")
         return path
 
-    async def cleanup(self):
-        for row in await self.storage.rows(self.storage.sql["resources.cleanup"]):
+    async def cleanup(self, *, drain=False):
+        for row in await self.storage.rows(
+            self.storage.sql["resources.cleanup"], (-1 if drain else 100,)
+        ):
             try:
                 await asyncio.to_thread(self.path(row["path"]).unlink, missing_ok=True)
                 async with self.storage.database.transaction() as tx:

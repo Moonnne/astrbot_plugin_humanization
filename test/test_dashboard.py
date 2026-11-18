@@ -102,6 +102,81 @@ async def test_grouped_message_index_and_exact_scope(dashboard):
     assert absent["total"] == 0
 
 
+async def test_chat_feed_resumes_at_last_message_with_equal_timestamps(dashboard):
+    runtime = dashboard.runtime
+    msg = runtime.adapter.snapshot(Event("游标测试", message_id="feed"))
+    runtime.storage.retention = 200
+    for seq in range(101):
+        await runtime.storage.append(replace(msg, message_id=f"feed-{seq}"))
+    query = {"feed": "1", "scope": msg.scope, "limit": 50, "q": "游标测试"}
+    _, first = await invoke(dashboard.records, query=query)
+    assert first["total"] == 101
+    await runtime.storage.append(replace(msg, message_id="feed-new"))
+    _, second = await invoke(
+        dashboard.records, query={**query, "cursor": first["cursor"]}
+    )
+    _, last = await invoke(
+        dashboard.records, query={**query, "cursor": second["cursor"]}
+    )
+    assert [len(p["items"]) for p in (first, second, last)] == [50, 50, 1]
+    assert last["cursor"] is None
+    ids = [row["message_id"] for p in (first, second, last) for row in p["items"]]
+    assert ids == [f"feed-{seq}" for seq in reversed(range(101))]
+
+
+async def test_delete_selected_sessions_clears_owned_data_and_file(dashboard):
+    runtime = dashboard.runtime
+    _, page = await invoke(dashboard.records, query={"grouped": "1"})
+    scope = page["items"][0]["scope"]
+    _, page = await invoke(dashboard.records, query={"scope": scope})
+    message_id = page["items"][0]["id"]
+    msg = runtime.adapter.snapshot(Event("其他群", message_id="other"))
+    other = replace(
+        msg,
+        scope=json.dumps(["onebot", "999", "group", "456"]),
+        group_id="456",
+        umo="onebot:GroupMessage:456",
+    )
+    await runtime.storage.append(other)
+    await runtime.storage.start_reply(scope, 1, "message")
+    path = runtime.media.path("image/selected.png")
+    path.parent.mkdir(exist_ok=True, parents=True)
+    path.write_bytes(b"test image")
+    async with dashboard.database.transaction() as tx:
+        await tx.execute(
+            dashboard.sql["resources.insert"],
+            (
+                "selected",
+                0,
+                "image",
+                "selected.png",
+                "image/selected.png",
+                10,
+                "",
+                1,
+                "skipped",
+                "",
+                "",
+                message_id,
+            ),
+        )
+    status, result = await invoke(
+        dashboard.delete, body={"category": "sessions", "keys": [scope]}
+    )
+    assert status == 200 and result["deleted"] == 1
+    for category in ("messages", "topics", "diaries", "decisions"):
+        _, data = await invoke(
+            dashboard.records, query={"category": category, "scope": scope}
+        )
+        assert data["total"] == 0
+    assert not await runtime.storage.rows(
+        "SELECT id FROM reply_runs WHERE scope=?", (scope,)
+    )
+    assert not path.exists()
+    _, kept = await invoke(dashboard.records, query={"scope": other.scope})
+    assert kept["total"] == 1
+
+
 @pytest.mark.parametrize("category", ["messages", "decisions", "topics", "diaries"])
 async def test_browse_parses_json_and_scopes_data(dashboard, category):
     status, result = await invoke(

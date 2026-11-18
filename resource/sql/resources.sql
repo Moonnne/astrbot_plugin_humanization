@@ -9,6 +9,8 @@ FROM message_resources r JOIN messages m ON m.id=r.message_row
 WHERE r.status='pending' ORDER BY m.id,r.position LIMIT 64;
 -- name: for_message
 SELECT * FROM message_resources WHERE message_row=? ORDER BY position;
+-- name: for_page
+SELECT * FROM message_resources WHERE message_row IN (SELECT value FROM json_each(?)) ORDER BY message_row,position;
 -- name: finish
 UPDATE message_resources SET description=?,status=?,provider=?,updated_at=? WHERE id=?;
 -- name: render
@@ -16,7 +18,7 @@ UPDATE messages SET text=?,segments=? WHERE id=?;
 -- name: by_id
 SELECT * FROM messages WHERE id=?;
 -- name: cleanup
-SELECT path FROM resource_cleanup LIMIT 100;
+SELECT path FROM resource_cleanup LIMIT ?;
 -- name: cleaned
 DELETE FROM resource_cleanup WHERE path=?;
 -- name: waiting

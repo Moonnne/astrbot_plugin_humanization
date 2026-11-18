@@ -56,6 +56,11 @@ window.addEventListener('message', event => {
   if(m.endpoint==='overview') data={stats:{sessions:2,messages:2,topics:2,diaries:2,decisions:2,planned_replies:2},sessions:[{title:'测试群',value:'onebot:GroupMessage:123',umo:'onebot:GroupMessage:123'},{title:'测试私聊',value:'onebot:FriendMessage:456',umo:'onebot:FriendMessage:456'}],timezone:'Asia/Shanghai'};
   if(m.endpoint==='records') {const items=records[m.params.category].filter(r=>!(window.deleted[m.params.category]||[]).includes(r.key));data={items,total:items.length};}
   if(m.endpoint==='records' && m.params.grouped==='1') data={items:[{scope:records.messages[0].scope,conversation:records.messages[0].conversation,timestamp:1792346400,message_count:2}],total:1};
+  if(m.endpoint==='records' && m.params.feed==='1' && window.longFeed) {
+    const offset=m.params.cursor ? 50 : 0;
+    const items=Array.from({length:offset ? 1 : 50},(_,i)=>({...records.messages[0],key:'feed-'+(offset+i),seq:offset+i,umo:'onebot:GroupMessage:123',segments:[{type:'text',text:'消息 '+(offset+i)}]}));
+    data={items,total:offset ? null : 51,cursor:offset ? null : '[1,50]'};
+  }
   if(m.endpoint==='records/delete') { (window.deleted[m.body.category] ||= []).push(...m.body.keys); data={deleted:m.body.keys.length}; }
   if(m.endpoint==='resource') data={kind:'image',url:'/api/file/test-logo'};
   if(m.endpoint==='settings') data=settings;
@@ -117,7 +122,28 @@ try {
   await expect(view.getByRole('button',{name:'刷新数据'})).not.toHaveClass(/v-btn--loading/);
   await page.screenshot({path:join(output,'overview.png'),animations:'disabled'});
   await view.getByRole('tab',{name:'聊天',exact:true}).click();
-  const enterChat = () => view.locator('.records-list .v-list-item').filter({hasText:'测试群'}).first().click();
+  const enterChat = () => view.locator('.records-list tbody button').filter({hasText:'测试群'}).first().click();
+  if (process.argv.includes('--chat-scroll')) {
+    await expect(view.getByRole('columnheader',{name:/消息数/})).toBeVisible();
+    await view.locator('tbody input[type=checkbox]').first().check();
+    await view.getByRole('button',{name:'删除所选会话'}).click();
+    await expect(view.getByRole('dialog')).toContainText('全部聊天、媒体文件、反应、回复记录、话题和日记');
+    await view.getByRole('button',{name:'取消',exact:true}).click();
+    await page.evaluate(()=>{window.longFeed=true;});
+    await enterChat();
+    const messages=view.locator('article');
+    await expect(messages).toHaveCount(50);
+    await messages.last().scrollIntoViewIfNeeded();
+    await expect(messages).toHaveCount(51);
+    expect(await page.evaluate(()=>window.calls.filter(c=>c.endpoint==='records' && c.params.feed==='1').map(c=>c.params.limit))).toEqual([50,50]);
+    const filterTop=await view.locator('#record-filters').evaluate(el=>el.getBoundingClientRect().top);
+    expect(filterTop).toBeLessThan(20);
+    expect(filterTop).toBeGreaterThanOrEqual(0);
+    await view.getByRole('button',{name:'回到顶部'}).click();
+    await expect(view.getByRole('heading',{name:'Humanization'})).toBeInViewport();
+    await page.evaluate(()=>{window.longFeed=false;});
+    await view.getByRole('button',{name:'返回会话'}).click();
+  }
   await enterChat();
   await expect(view.getByAltText('海岸.png')).toBeVisible();
   await expect(view.getByText('海边的海鸥',{exact:true})).toBeVisible();

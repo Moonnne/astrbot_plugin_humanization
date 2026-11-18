@@ -1,11 +1,19 @@
 <script setup>
-import { ref, inject, onMounted, watch } from 'vue';
+import { ref, inject, onMounted, onBeforeUnmount, watch } from 'vue';
+import { mdiArrowUp } from '@mdi/js';
 import { mdiChartBar, mdiMessageTextOutline, mdiHeartOutline, mdiForumOutline, mdiBookOpenPageVariantOutline, mdiCogOutline, mdiRefresh, mdiClose, mdiTextBoxOutline } from '@mdi/js';
 import Overview from './overview/Overview.vue';
 import Records from './data/Records.vue';
 import Settings from './settings/Settings.vue';
 
 const bridge = inject('bridge');
+const showTop = ref(false);
+function trackScroll() { showTop.value = window.scrollY > window.innerHeight / 2; }
+function toTop() {
+  window.scrollTo({top:0, behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
+}
+onMounted(() => window.addEventListener('scroll',trackScroll,{passive:true}));
+onBeforeUnmount(() => window.removeEventListener('scroll',trackScroll));
 const tab = ref('overview');
 const settings = ref(null);
 const pendingTab = ref(null);
@@ -72,6 +80,7 @@ onMounted(load);
         <Settings v-else-if="['settings','prompts'].includes(tab)" :key="tab" ref="settings" :prompts-only="tab === 'prompts'" @changed="load" />
         <Records v-else :key="tab" :category="tab" :sessions="overview.sessions" :refresh="refresh" :timezone="overview.timezone" @changed="load" />
       </v-container>
+      <v-btn v-if="showTop" class="back-to-top" :icon="mdiArrowUp" size="small" variant="elevated" aria-label="回到顶部" @click="toTop" />
       <v-dialog :model-value="pendingTab !== null" persistent max-width="540">
         <v-card>
           <v-card-title class="text-h6 pa-4 pb-0 pl-6 d-flex align-center justify-space-between">
@@ -89,6 +98,7 @@ onMounted(load);
 </template>
 
 <style scoped>
+.back-to-top { position: fixed; right: 18px; bottom: 18px; z-index: 5; }
 /* Match the host's current DataPage navigation. */
 .data-tabs-scroll { overflow-x: auto; padding: 4px 0 8px; scrollbar-width: none; }
 .data-tabs-scroll::-webkit-scrollbar { display: none; }

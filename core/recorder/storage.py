@@ -413,17 +413,22 @@ class Storage:
             day: Diary date to remove, or None to remove all its diaries.
         """
         async with self.database.transaction() as tx:
-            await tx.execute(self.sql["messages.reset_delete"], (scope,))
-            await tx.execute(self.sql["reply_runs.reset_delete"], (scope,))
-            await tx.execute(self.sql["controller_decisions.reset_delete"], (scope,))
-            if day is None:
-                await tx.execute(self.sql["diary_days.reset_delete"], (scope,))
-            else:
-                await tx.execute(
-                    self.sql["diary_days.reset_delete_2"],
-                    (scope, day),
-                )
-            await tx.execute(self.sql["sessions.reset_delete"], (scope,))
+            await self.reset_in_transaction(tx, scope, day)
+
+    async def reset_in_transaction(self, tx, scope: str, day: str | None = None):
+        """Remove one scope inside a single or multi-scope reset transaction."""
+        await tx.execute(self.sql["messages.reset_delete"], (scope,))
+        await tx.execute(self.sql["reply_runs.reset_delete"], (scope,))
+        await tx.execute(self.sql["controller_decisions.reset_delete"], (scope,))
+        if day is None:
+            await tx.execute(self.sql["diary_days.reset_delete"], (scope,))
+        else:
+            await tx.execute(
+                self.sql["diary_days.reset_delete_2"],
+                (scope, day),
+            )
+        cursor = await tx.execute(self.sql["sessions.reset_delete"], (scope,))
+        return cursor.rowcount
 
     async def reset_targets(self) -> list[ResetTarget]:
         """Locate current sessions and diary-only scopes retained by a today reset.

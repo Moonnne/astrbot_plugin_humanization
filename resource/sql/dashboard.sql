@@ -64,6 +64,9 @@ SELECT COUNT(*) AS total FROM ({source});
 -- name: page
 SELECT * FROM ({source}) ORDER BY {order} LIMIT :limit OFFSET :skip
 
+-- name: feed_after
+SELECT * FROM ({source}) WHERE (timestamp,id) {comparison} (:cursor_time,:cursor_id)
+
 -- name: sort_conversation
 COALESCE((SELECT NULLIF(value,key) FROM json_each(:session_labels) WHERE key=
  json_extract(scope,'$[0]') || ':' || CASE json_extract(scope,'$[2]')

@@ -10,7 +10,10 @@ const selected = computed({get:()=>props.modelValue, set:value=>emit('update:mod
   <article v-for="row in rows" :key="row.key" class="d-flex align-start ga-2 pa-3" :class="{'flex-row-reverse':row.direction==='out'}">
     <v-checkbox-btn v-model="selected" :value="row.key" :aria-label="'选择消息 '+row.seq" class="flex-grow-0" />
     <div class="bubble">
-      <small>{{ row.sender_name || row.sender_id }} · {{ time(row.timestamp) }}</small>
+      <div class="d-flex flex-wrap align-baseline ga-2">
+        <strong class="font-weight-bold">{{ row.sender_name || row.sender_id }}</strong>
+        <small class="text-medium-emphasis" title="消息来源 UMO">{{ row.umo }}</small>
+      </div>
       <v-card class="pa-3 mt-1" :color="row.direction === 'out' ? 'primary' : undefined" variant="tonal">
         <template v-for="(part,i) in row.segments" :key="i">
           <ChatMedia v-if="part.resource_id && row.resources.some(r=>r.id===part.resource_id)" :resource="row.resources.find(r=>r.id===part.resource_id)" />
@@ -18,6 +21,7 @@ const selected = computed({get:()=>props.modelValue, set:value=>emit('update:mod
         </template>
         <span v-if="!row.segments.length">{{ row.text }}</span>
       </v-card>
+      <small class="text-medium-emphasis">{{ time(row.timestamp) }}</small>
       <v-btn size="x-small" variant="text" :icon="mdiEyeOutline" aria-label="查看详情" @click="$emit('detail', row)" />
       <v-btn size="x-small" variant="text" :icon="mdiDeleteOutline" aria-label="删除消息" @click="$emit('remove', row)" />
     </div>

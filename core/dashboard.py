@@ -6,6 +6,7 @@ import difflib
 import hashlib
 import inspect
 import json
+import time
 from contextlib import AsyncExitStack
 from datetime import date, datetime
 from pathlib import Path
@@ -146,9 +147,15 @@ class Dashboard:
         category = request.query.get("category", "messages")
         sort = request.query.get("sort", "timestamp")
         order = request.query.get("order", "desc")
+        grouped = category == "messages" and request.query.get("grouped") == "1"
         if (
             category not in self.categories
-            or sort not in self.sorts | self.category_sorts.get(category, set())
+            or sort
+            not in (
+                {"timestamp", "conversation", "message_count"}
+                if grouped
+                else self.sorts | self.category_sorts.get(category, set())
+            )
             or order not in {"asc", "desc"}
         ):
             return error_response("无效的数据分类或排序字段")
@@ -212,30 +219,67 @@ class Dashboard:
             if sort == "state"
             else sort
         )
-        grouped = category == "messages" and request.query.get("grouped") == "1"
         source = self.sql["dashboard.filtered"].format(source=source, filters=filters)
         if grouped:
             source = self.sql["dashboard.grouped_messages"].format(source=source)
-            sort_expression = "timestamp"
+        feed = request.query.get("feed") == "1"
+        cursor = request.query.get("cursor")
+        if feed and (
+            grouped
+            or category != "messages"
+            or sort != "timestamp"
+            or not args["scope"]
+        ):
+            return error_response("消息流需要指定会话并按时间排序")
+        if cursor:
+            try:
+                timestamp, row_id = json.loads(cursor)
+                if (
+                    not feed
+                    or type(timestamp) not in (int, float)
+                    or type(row_id) is not int
+                ):
+                    raise ValueError
+            except (TypeError, ValueError):
+                return error_response("无效的消息游标")
+            args.update(cursor_time=timestamp, cursor_id=row_id)
+            source = self.sql["dashboard.feed_after"].format(
+                source=source, comparison="<" if order == "desc" else ">"
+            )
+        if feed:
+            args.update(limit=limit + 1, skip=0)
 
         # Only fixed resource names and whitelisted sort identifiers enter SQL.
+        ordering = f"{sort_expression} {order}, scope"
+        if feed:
+            ordering = f"timestamp {order}, id {order}"
+        elif not grouped:
+            ordering += ", id"
         async with self.database.snapshot() as tx:
-            total = (
-                await tx.rows(
-                    self.sql["dashboard.count"].format(source=source, filters=filters),
-                    args,
+            total = None
+            if not cursor:
+                count = await tx.rows(
+                    self.sql["dashboard.count"].format(source=source), args
                 )
-            )[0]["total"]
+                total = count[0]["total"]
             rows = await tx.rows(
                 self.sql["dashboard.page"].format(
                     source=source,
                     filters=filters,
-                    order=f"{sort_expression} {order}, scope"
-                    if grouped
-                    else f"{sort_expression} {order}, scope, id",
+                    order=ordering,
                 ),
                 args,
             )
+            has_more = feed and len(rows) > limit
+            if has_more:
+                rows.pop()
+            resources = {}
+            if category == "messages" and not grouped and rows:
+                for resource in await tx.rows(
+                    self.sql["resources.for_page"],
+                    (json.dumps([r["id"] for r in rows]),),
+                ):
+                    resources.setdefault(resource["message_row"], []).append(resource)
             for row in rows:
                 if grouped:
                     row["conversation"] = self.conversation(row["scope"])
@@ -253,14 +297,22 @@ class Dashboard:
                     for topic in row["topics"]:
                         topic["interact"] = json.loads(topic["interact"])
                 if category == "messages":
-                    row["resources"] = await tx.rows(
-                        self.sql["resources.for_message"], (row["id"],)
-                    )
+                    row["resources"] = resources.get(row["id"], [])
                     for resource in row["resources"]:
                         resource.pop("source", None)
-                        if resource["path"] and not self.runtime.media.path(resource["path"]).is_file():
+                        if (
+                            resource["path"]
+                            and not self.runtime.media.path(resource["path"]).is_file()
+                        ):
                             resource["path"] = ""
-        return json_response({"items": rows, "total": total})
+        result = {"items": rows, "total": total}
+        if feed:
+            result["cursor"] = (
+                json.dumps([rows[-1]["timestamp"], rows[-1]["id"]])
+                if has_more
+                else None
+            )
+        return json_response(result)
 
     async def delete(self):
         """Delete explicit records while excluding concurrent plans and summaries.
@@ -274,16 +326,23 @@ class Dashboard:
         if not isinstance(payload, dict):
             return error_response("请求必须为对象")
         category, keys = payload.get("category"), payload.get("keys")
+        max_keys = (
+            max(100, self.runtime.storage.retention) if category == "messages" else 100
+        )
         if (
             not isinstance(category, str)
-            or category not in self.categories
+            or category not in self.categories | {"sessions"}
             or not isinstance(keys, list)
-            or not 1 <= len(keys) <= 100
+            or not 1 <= len(keys) <= max_keys
         ):
-            return error_response("请选择1—100条记录")
+            return error_response(f"请选择1—{max_keys}条记录")
         try:
             targets = []
             for key in keys:
+                if category == "sessions":
+                    self.conversation(key)
+                    targets.append((key, None))
+                    continue
                 scope, identity = json.loads(key)
                 self.conversation(scope)
                 if category == "diaries":
@@ -311,11 +370,18 @@ class Dashboard:
             async with self.database.transaction() as tx:
                 deleted = 0
                 for target in targets:
+                    if category == "sessions":
+                        deleted += await self.runtime.storage.reset_in_transaction(
+                            tx, target[0]
+                        )
+                        continue
                     cursor = await tx.execute(
                         self.sql[f"dashboard.delete_{category}"], target
                     )
                     deleted += cursor.rowcount
             for scope in scopes:
+                if category == "sessions":
+                    self.runtime.reset_since[scope] = time.time()
                 self.runtime.scheduler.reset(scope)
                 self.runtime.reset_versions[scope] = (
                     self.runtime.reset_versions.get(scope, 0) + 1
@@ -323,7 +389,7 @@ class Dashboard:
         self.runtime.log.info(
             "dashboard.records.deleted", category=category, count=deleted
         )
-        await self.runtime.media.cleanup()
+        await self.runtime.media.cleanup(drain=category == "sessions")
         return json_response({"deleted": deleted})
 
     async def settings(self):
