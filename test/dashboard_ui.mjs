@@ -26,6 +26,10 @@ const rows = [1, 2].map(id => ({ id, key:JSON.stringify([scope,id]), scope,
 rows[1].headline = '这是一段需要省略显示但悬停时应完整保留的内容。'.repeat(16);
 rows[0].segments.push({type:'image',resource_id:'img'});
 rows[0].resources.push({id:'img',kind:'image',name:'海岸.png',path:'image/img.png',size:128,description:'海边的海鸥'});
+for (const [kind,name] of [['video','测试视频.webm'],['record','测试音频.wav']]) {
+  rows[0].segments.push({type:kind,resource_id:kind});
+  rows[0].resources.push({id:kind,kind,name,path:kind+'/'+name});
+}
 rows[1].segments.push({type:'image',resource_id:'old'});
 rows[1].resources.push({id:'old',kind:'image',name:'旧图.jpg',path:'',size:100,description:'过期图片转述'});
 const records = {
@@ -62,7 +66,7 @@ window.addEventListener('message', event => {
     data={items,total:offset ? null : 51,cursor:offset ? null : '[1,50]'};
   }
   if(m.endpoint==='records/delete') { (window.deleted[m.body.category] ||= []).push(...m.body.keys); data={deleted:m.body.keys.length}; }
-  if(m.endpoint==='resource') data={kind:'image',url:'/api/file/test-logo'};
+  if(m.endpoint==='resource') data={url:['video','record'].includes(m.params.id) ? '/api/file/test-'+m.params.id : '/api/file/test-logo'};
   if(m.endpoint==='settings') data=settings;
   if(m.endpoint==='prompts/diff') {
     const original=settings.prompt_defaults[m.body.name], draft=m.body.text.trim() ? m.body.text : original;
@@ -83,6 +87,8 @@ const server = createServer(async (req,res) => {
     const files = {'/view/app.js':'app.js','/view/style.css':'style.css','/view/assets/vendor.js':'assets/vendor.js'};
     if (url === '/') { res.setHeader('Content-Type','text/html; charset=utf-8'); res.end(harness); }
     else if (url === '/api/file/test-logo') { res.setHeader('Content-Type','image/svg+xml'); res.end('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="10" fill="gray"/></svg>'); }
+    else if (url === '/api/file/test-video') { res.setHeader('Content-Type','video/webm'); res.end(await readFile(join(root,'test/media-preview.webm'))); }
+    else if (url === '/api/file/test-record') { res.setHeader('Content-Type','audio/wav'); res.end(await readFile(join(host,'samples/stt_health_check.wav'))); }
     else if (url === '/view/') {
       res.setHeader('Content-Type','text/html; charset=utf-8');
       const html = await readFile(join(root,'views/humanization/index.html'),'utf8');
@@ -149,6 +155,33 @@ try {
   await expect(view.getByText('海边的海鸥',{exact:true})).toBeVisible();
   await expect(view.getByText('过期图片转述',{exact:true})).toBeVisible();
   await expect(view.getByAltText('旧图.jpg')).toHaveCount(0);
+  await expect(view.locator('.records-list header')).toContainText('onebot:GroupMessage:123');
+  await expect(view.getByLabel('选择已加载消息')).toHaveCount(0);
+  await view.getByAltText('海岸.png').dblclick();
+  const viewer = view.getByRole('dialog');
+  await expect(viewer.getByRole('complementary')).toHaveCount(0);
+  const picture = viewer.getByAltText('海岸.png');
+  const original = await picture.boundingBox();
+  await viewer.getByLabel('放大图片').click();
+  await expect.poll(async()=> (await picture.boundingBox()).width).toBeGreaterThan(original.width);
+  await viewer.getByLabel('媒体信息',{exact:true}).click();
+  await expect(viewer.getByRole('complementary')).toContainText('海边的海鸥');
+  await viewer.getByRole('button',{name:'媒体信息'}).click();
+  await expect(viewer.getByRole('complementary')).toHaveCount(0);
+  await viewer.getByLabel('关闭媒体查看器').click();
+  if (process.argv.includes('--media-playback')) {
+    const frame = page.frames().find(f=>f.url().includes('/view/'));
+    await frame.evaluate(()=>document.addEventListener('error',e=>{
+      if (e.target instanceof HTMLMediaElement) window.mediaTestError = [e.target.tagName,e.target.currentSrc,e.target.error?.message].join(' ');
+    },true));
+    for (const [name,tag] of [['测试视频.webm','video'],['测试音频.wav','audio']]) {
+      await view.getByRole('button',{name:'查看媒体 '+name}).dblclick();
+      await expect.poll(()=>frame.evaluate(tag=>window.mediaTestError || Boolean(document.querySelector('.stage '+tag)?.readyState),tag)).toBe(true);
+      await viewer.locator(tag).evaluate(el=>el.play());
+      await expect.poll(()=>viewer.locator(tag).evaluate(el=>el.currentTime)).toBeGreaterThan(0);
+      await viewer.getByLabel('关闭媒体查看器').click();
+    }
+  }
   await expect(view.getByText('天气很好 1',{exact:true})).toBeVisible();
   await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeVisible();
   if (process.argv.includes('--table-sorting')) {
@@ -279,7 +312,8 @@ try {
   await view.locator('.v-select').filter({hasText:'排序'}).click();
   await view.getByRole('option',{name:'时间：从旧到新'}).click();
   await expect.poll(()=>page.evaluate(()=>window.calls.filter(c=>c.endpoint==='records').at(-1)?.params?.order)).toBe('asc');
-  await view.getByRole('checkbox').first().check();
+  for (const checkbox of await view.locator('article input[type=checkbox]').all()) await checkbox.check();
+  await expect(view.locator('article.selected-message')).toHaveCount(2);
   await view.getByRole('button',{name:'删除所选'}).click();
   await expect(view.getByRole('dialog')).toContainText('2 条');
   await view.getByRole('button',{name:'确认删除',exact:true}).click();
@@ -562,12 +596,16 @@ try {
     await expect(view.getByRole('dialog')).toBeHidden();
   }
   await view.getByRole('tab',{name:'聊天',exact:true}).click();
+  await expect(view.getByRole('columnheader',{name:/消息数/})).toBeInViewport();
+  await view.getByRole('button',{name:'显示筛选',exact:true}).click();
+  await expect(view.locator('.records-list')).toBeHidden();
   await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeVisible();
   await page.screenshot({path:join(output,'mobile-filters.png'),animations:'disabled'});
   expect(await iframe.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
   await page.emulateMedia({reducedMotion:'reduce'});
   await view.getByRole('button',{name:'隐藏筛选',exact:true}).click();
   await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeHidden();
+  await expect(view.getByRole('columnheader',{name:/消息数/})).toBeInViewport();
   expect(errors).toEqual([]);
   console.log(`Sandbox bridge UI checks passed. Screenshots: ${output}`);
 } catch (error) {

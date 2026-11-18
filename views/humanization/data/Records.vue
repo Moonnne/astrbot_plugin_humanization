@@ -1,8 +1,9 @@
 <script setup>
-import { ref, reactive, computed, watch, inject, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, watch, inject, nextTick, onBeforeUnmount } from 'vue';
 import { mdiArrowLeft, mdiFilterVariant, mdiDeleteOutline, mdiEyeOutline } from '@mdi/js';
 import JsonValue from '../shared/JsonValue.vue';
 import ChatMessages from './ChatMessages.vue';
+import MediaViewer from './MediaViewer.vue';
 import FilterPanel from './FilterPanel.vue';
 import ResizableHeaders from './ResizableHeaders.vue';
 import { sessionLabel } from '../shared/session.js';
@@ -12,7 +13,21 @@ const emit = defineEmits(['changed']);
 const bridge = inject('bridge');
 const defaults = {q:'', sessions:[], chat_type:'', start:'', end:'', kind:'', sender:'', component:'', reply:'', emotion:'', required:'', trigger:'', participant:'', bot_reply:'', coverage_gap:'', sort:'timestamp:desc'};
 const filters = reactive({...defaults, sessions:[]});
-const filtersOpen = ref(true);
+const filterToggle = ref(null);
+const smallWindow = window.matchMedia('(max-width: 960px)');
+const compact = ref(smallWindow.matches);
+const desktopFilters = ref(true), mobileFilters = ref(false);
+const filtersOpen = computed({
+  get: () => compact.value ? mobileFilters.value : desktopFilters.value,
+  set: value => { (compact.value ? mobileFilters : desktopFilters).value = value; },
+});
+function resizeLayout(event) { compact.value = event.matches; mobileFilters.value = false; }
+smallWindow.addEventListener('change', resizeLayout);
+async function closeFilters() {
+  filtersOpen.value = false;
+  await nextTick();
+  filterToggle.value?.$el.focus({preventScroll:true});
+}
 const currentChat = ref(null);
 const grouped = computed(() => props.category === 'messages' && !currentChat.value);
 const nextCursor = ref(null);
@@ -48,11 +63,6 @@ const sort = computed({
 const rows = ref([]), total = ref(0), selected = ref([]), loading = ref(false), error = ref('');
 const detail = ref(null), confirm = ref(false), deleting = ref(false), success = ref('');
 const mediaPreview = ref(null);
-watch(detail, () => { mediaPreview.value = null; });
-async function preview(resource) {
-  try { mediaPreview.value = await bridge.apiGet('resource', {id:resource.id}); }
-  catch (e) { error.value = e.message; }
-}
 let generation = 0, timer;
 const titles = { messages:'聊天记录', decisions:'最近反应', topics:'话题', diaries:'日记' };
 const headers = computed(() => grouped.value ? [
@@ -103,7 +113,7 @@ function queue(delay = 200) {
 watch(filters, () => { page.value = 1; queue(); }, {deep:true});
 watch([page,limit,() => props.refresh], () => queue());
 queue();
-onBeforeUnmount(() => { observer?.disconnect(); clearTimeout(timer); generation++; });
+onBeforeUnmount(() => { smallWindow.removeEventListener('change', resizeLayout); observer?.disconnect(); clearTimeout(timer); generation++; });
 function removeOne(row) { selected.value = [row.key]; confirm.value = true; }
 async function remove() {
   deleting.value = true; error.value = '';
@@ -127,25 +137,25 @@ const detailFields = computed(() => {
   <v-alert v-if="error" type="error" variant="tonal" class="mb-4">{{ error }}</v-alert>
   <v-alert v-if="success" type="success" variant="tonal" closable class="mb-4" @click:close="success = ''">{{ success }}</v-alert>
   <div class="d-flex align-center flex-wrap ga-3 mb-4">
-    <v-btn :prepend-icon="mdiFilterVariant" :aria-expanded="filtersOpen" aria-controls="record-filters" @click="filtersOpen = !filtersOpen">{{ filtersOpen ? '隐藏筛选' : '显示筛选' }}</v-btn>
+    <v-btn ref="filterToggle" :prepend-icon="mdiFilterVariant" :aria-expanded="filtersOpen" aria-controls="record-filters" @click="filtersOpen = !filtersOpen">{{ filtersOpen ? '隐藏筛选' : '显示筛选' }}</v-btn>
     <div class="text-body-2 text-medium-emphasis flex-grow-1">共 {{ total }} {{ grouped ? "个会话" : "条" }} <span>· 已选 {{ selected.length }} {{ grouped ? "个" : "条" }}（{{ currentChat ? "已加载" : "当前页" }}）</span></div>
     <v-btn color="error" :prepend-icon="mdiDeleteOutline" :disabled="!selected.length || loading" @click="confirm = true">{{ grouped ? '删除所选会话' : '删除所选' }}</v-btn>
   </div>
-  <div class="records-layout">
+  <div class="records-layout" :class="{'compact-layout':compact,'show-filters':filtersOpen}">
     <v-expand-x-transition>
-      <div v-show="filtersOpen" id="record-filters" class="filter-column" :inert="!filtersOpen" :aria-hidden="!filtersOpen">
-        <FilterPanel :category="category" :model="filters" :sessions="sessions" :sort-choices="sortChoices" :active="filtersOpen" @collapse="filtersOpen = false" @reset="Object.assign(filters, defaults, {sessions:[]})" />
+      <div v-show="compact || filtersOpen" id="record-filters" class="filter-column" :inert="!filtersOpen ? '' : null" :aria-hidden="!filtersOpen">
+        <FilterPanel :category="category" :model="filters" :sessions="sessions" :sort-choices="sortChoices" :active="filtersOpen" @collapse="closeFilters" @reset="Object.assign(filters, defaults, {sessions:[]})" />
       </div>
     </v-expand-x-transition>
-    <v-card class="records-list" rounded="xl">
+    <v-card class="records-list" rounded="xl" :inert="compact && filtersOpen ? '' : null" :aria-hidden="compact && filtersOpen">
     <template v-if="currentChat">
-      <header class="d-flex align-center ga-2 pa-3">
+      <header class="d-flex flex-wrap align-center ga-2 pa-3">
         <v-btn variant="text" :prepend-icon="mdiArrowLeft" @click="openChat(null)">返回会话</v-btn>
-        <strong class="session-name">{{ sessionTitles[currentChat.conversation] || currentChat.conversation }}</strong>
+        <strong class="session-name">{{ sessionTitles[currentChat.conversation] || currentChat.conversation.split(':').slice(2).join(':') }}</strong>
+        <small class="chat-umo text-medium-emphasis">{{ currentChat.conversation }}</small>
       </header>
       <v-divider />
-      <v-checkbox-btn label="选择已加载消息" :model-value="!!rows.length && selected.length === rows.length" @update:model-value="selected = $event ? rows.map(row=>row.key) : []" />
-      <ChatMessages v-model="selected" :rows="rows" :time="time" @detail="detail = $event" @remove="removeOne" />
+      <ChatMessages v-model="selected" :rows="rows" :time="time" @detail="detail = $event" @preview="mediaPreview = $event" @remove="removeOne" />
       <v-progress-linear v-if="loading" indeterminate />
       <v-btn v-else-if="error" variant="text" @click="load(!!nextCursor)">重新加载</v-btn>
       <div v-else-if="nextCursor" ref="sentinel" style="height:1px"></div>
@@ -182,16 +192,14 @@ const detailFields = computed(() => {
     <v-card><v-card-title class="text-h6 pa-4 pb-0 pl-6">{{ titles[category] }}详情</v-card-title>
       <v-card-text>
         <div class="d-flex flex-wrap ga-2 mb-3">
-          <v-btn v-for="resource in (detail?.resources || []).filter(r => r.path && ['image','record','video'].includes(r.kind))" :key="resource.id" size="small" @click="preview(resource)">查看 {{ resource.name }}</v-btn>
+          <v-btn v-for="resource in (detail?.resources || []).filter(r => r.path && ['image','record','video'].includes(r.kind))" :key="resource.id" size="small" @click="mediaPreview = resource">查看 {{ resource.name }}</v-btn>
         </div>
-        <img v-if="mediaPreview?.kind === 'image'" :src="mediaPreview.url" alt="聊天图片" style="max-width:100%;max-height:420px" />
-        <audio v-else-if="mediaPreview?.kind === 'record'" :src="mediaPreview.url" controls />
-        <video v-else-if="mediaPreview?.kind === 'video'" :src="mediaPreview.url" controls style="max-width:100%;max-height:420px" />
         <JsonValue :value="detailFields" />
       </v-card-text>
       <v-card-actions><v-spacer /><v-btn @click="detail = null">关闭</v-btn></v-card-actions>
     </v-card>
   </v-dialog>
+  <MediaViewer v-if="mediaPreview" :resource="mediaPreview" @close="mediaPreview = null" />
   <v-dialog v-model="confirm" max-width="540" :persistent="deleting">
     <v-card><v-card-title class="text-h6 pa-4 pb-0 pl-6">确认删除</v-card-title>
       <v-card-text>
@@ -219,12 +227,19 @@ const detailFields = computed(() => {
 .records-table :deep(table) { table-layout: fixed; width: var(--records-width); min-width: 100%; }
 .records-table :deep(td.record-actions), .records-table :deep(th.record-actions) { position: sticky !important; right: 0; z-index: 2 !important; padding-inline: 8px !important; white-space: nowrap; background: rgb(var(--v-theme-surface)) !important; box-shadow: -1px 0 rgba(var(--v-theme-on-surface),0.1); }
 .records-table :deep(th.record-actions) { z-index: 3 !important; }
-@media (max-width: 800px) {
-  .records-layout { flex-direction: column; align-items: stretch; }
-  .filter-column { width: 100%; max-height: 35dvh; z-index: 2; margin-bottom: 16px; }
-  .filter-column :deep(.filter-panel) { width: 100%; }
+.chat-umo, header .session-name { overflow-wrap: anywhere; }
+.compact-layout { display: block; position: relative; overflow: clip; }
+.compact-layout > .filter-column, .compact-layout > .records-list {
+  width: 100%; top: 0; max-height: none; transition: transform 180ms ease, visibility 180ms;
 }
+.compact-layout .filter-column :deep(.filter-panel) { width: 100%; }
+.compact-layout .filter-column { overflow: visible; }
+.compact-layout.show-filters > .filter-column, .compact-layout:not(.show-filters) > .records-list { position: relative; transform: translateX(0); }
+.compact-layout:not(.show-filters) > .filter-column, .compact-layout.show-filters > .records-list { position: absolute; visibility: hidden; pointer-events: none; }
+.compact-layout:not(.show-filters) > .filter-column { transform: translateX(100%); }
+.compact-layout.show-filters > .records-list { transform: translateX(-100%); }
 @media (prefers-reduced-motion: reduce) {
+  .compact-layout > .filter-column, .compact-layout > .records-list { transition: none; }
   .filter-column.expand-x-transition-enter-active,
   .filter-column.expand-x-transition-leave-active { transition-duration: 0ms !important; }
 }
