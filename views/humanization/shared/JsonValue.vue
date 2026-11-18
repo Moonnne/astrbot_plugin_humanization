@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import { formatBytes } from './size.js';
 const props = defineProps({ value: { default: null } });
 const parsed = computed(() => {
   if (typeof props.value === 'string' && /^[\[{]/.test(props.value.trim())) {
@@ -18,7 +19,7 @@ const labels = { sender_id:'发送者ID', target_id:'目标ID', target_is_self:'
   <v-table v-else-if="typeof parsed === 'object'" density="compact">
     <tbody><tr v-for="(item,key) in parsed" :key="key">
       <td class="text-medium-emphasis text-no-wrap align-top py-2">{{ labels[key] || key }}</td>
-      <td class="text-break py-2"><JsonValue :value="item" /></td>
+      <td class="text-break py-2"><span v-if="key === 'size' && typeof item === 'number'">{{ formatBytes(item) }}</span><JsonValue v-else :value="item" /></td>
     </tr></tbody>
   </v-table>
   <div v-else class="text-body-2 text-pre-wrap text-break">{{ parsed === true ? '是' : parsed === false ? '否' : parsed }}</div>

@@ -1,11 +1,13 @@
 """Media ownership, batching and fallback contracts using isolated files."""
 
 import json
+import wave
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from humanization_test.core.recorder.media import Media
+from test_host_contract import plugin as plugin
 from test_runtime import message
 from test_runtime import storage as storage
 
@@ -31,6 +33,12 @@ def service(storage, tmp_path, enabled=True):
 async def add(media, tmp_path, index, kind="image", text=""):
     source = tmp_path / f"input{index}.bin"
     source.write_bytes(b"content")
+    if kind == "record":
+        with wave.open(str(source), "wb") as stream:
+            stream.setnchannels(1)
+            stream.setsampwidth(2)
+            stream.setframerate(24000)
+            stream.writeframes(b"\x00\x00" * 240)
     msg = replace(message(index), segments=json.dumps([{"type": kind}]))
     await media.storage.append(msg)
     await media.capture(
@@ -38,7 +46,7 @@ async def add(media, tmp_path, index, kind="image", text=""):
         [
             SimpleNamespace(
                 type=kind,
-                name="picture.png",
+                name="voice.bin" if kind == "record" else "picture.png",
                 text=text,
                 convert_to_file_path=AsyncMock(return_value=str(source)),
             )
@@ -114,21 +122,24 @@ async def test_late_result_cannot_restore_deleted_message(storage, tmp_path):
 async def test_adapter_stt_precedes_model(storage, tmp_path):
     media = service(storage, tmp_path)
     await add(media, tmp_path, 1, "record")
-    media.action = AsyncMock(return_value={"text": "适配器转写"})
+    client = SimpleNamespace(call_action=AsyncMock(return_value={"text": "适配器转写"}))
+    media.context.get_platform_inst = lambda _: SimpleNamespace(
+        meta=lambda: SimpleNamespace(name="aiocqhttp"), get_client=lambda: client
+    )
     await media.batch(await storage.rows(storage.sql["resources.pending"]))
     media.context.llm_generate.assert_not_called()
     media.context.get_using_stt_provider_async.assert_not_called()
     assert "适配器转写" in (await storage.recent("group", 1))[0]["text"]
 
 
-async def test_native_stt_fallback_after_model_failure(storage, tmp_path):
+async def test_native_stt_precedes_audio_model(storage, tmp_path):
     media = service(storage, tmp_path)
     await add(media, tmp_path, 1, "record")
     media.context.llm_generate.side_effect = RuntimeError("unavailable")
     native = SimpleNamespace(get_text=AsyncMock(return_value="原生转写"))
     media.context.get_using_stt_provider_async.return_value = native
     await media.batch(await storage.rows(storage.sql["resources.pending"]))
-    media.context.llm_generate.assert_awaited_once()
+    media.context.llm_generate.assert_not_awaited()
     native.get_text.assert_awaited_once()
     assert "原生转写" in (await storage.recent("group", 1))[0]["text"]
 
@@ -144,3 +155,61 @@ async def test_plain_link_is_indexed_without_network_or_model(storage, tmp_path)
     assert "[link:" in (await storage.recent("group", 1))[0]["text"]
     assert not await media.waiting(msg.scope)
     media.context.llm_generate.assert_not_called()
+
+
+async def test_record_prefers_host_normalized_path(storage, tmp_path):
+    media = service(storage, tmp_path, False)
+    local = tmp_path / "normalized.wav"
+    local.write_bytes(b"normalized")
+    msg = replace(message(1), segments='[{"type":"record"}]')
+    await storage.append(msg)
+    part = SimpleNamespace(
+        type="record",
+        name="voice.bin",
+        path=str(local),
+        file=str(local),
+        url="https://example.com/original.bin",
+        text="",
+        convert_to_file_path=AsyncMock(return_value=str(local)),
+    )
+    media.copy = Mock(side_effect=media.copy)
+    await media.capture(msg, [part])
+    assert media.copy.call_args.args[0] == str(local)
+
+
+async def test_platform_voice_attachment_uses_available_transcript(plugin, tmp_path):
+    from humanization_test.core.astrbot_adapter import PlatformVoiceFilter
+    from test_host_contract import Event
+
+    from astrbot.api.message_components import Plain, Record
+
+    for platform in ("qq_official", "telegram"):
+        event = Event(message_id=platform)
+        event.get_platform_name = lambda: platform
+        clip = tmp_path / "voice.wav"
+        clip.write_bytes(b"sample")
+        event.message_obj.message = [Record(file=str(clip))]
+        event.message_obj.raw_message = {
+            "attachments": [{"content_type": "voice", "asr_refer_text": "平台结果"}]
+        }
+        assert PlatformVoiceFilter().filter(event, {})
+        event.message_obj.message = [Plain("原生结果")]
+        await plugin.record_platform_voice(event)
+        msg = plugin.adapter.snapshot(event)
+        latest = (await plugin.storage.recent(msg.scope, 1))[0]
+        resources = await plugin.storage.rows(
+            plugin.storage.sql["resources.for_message"], (latest["id"],)
+        )
+        assert resources[0]["description"] == (
+            "平台结果" if platform == "qq_official" else "原生结果"
+        )
+        assert not event.get_extra("humanization_claimed")
+
+
+async def test_native_stt_gets_wav_not_bin(storage, tmp_path):
+    media = service(storage, tmp_path)
+    row = await add(media, tmp_path, 1, "record")
+    native = SimpleNamespace(get_text=AsyncMock(return_value="听见了"))
+    media.context.get_using_stt_provider_async.return_value = native
+    await media.stt({**row, "umo": "onebot:GroupMessage:123"})
+    assert native.get_text.call_args.kwargs["audio_url"].endswith(".wav")

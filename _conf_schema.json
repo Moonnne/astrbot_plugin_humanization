@@ -175,7 +175,7 @@
         "description": "消息转述模型",
         "default": "",
         "_special": "select_provider",
-        "hint": "留空使用 Recorder 摘要模型，不回退主 LLM。图片需要 image 能力，语音优先适配器 STT，再使用音频模型，最后原生 STT。"
+        "hint": "留空使用 Recorder 摘要模型，不回退主 LLM。图片需要 image 能力，语音先复用已有转写，适配器可转写时优先尝试，随后使用会话的 AstrBot STT，最后尝试音频模型。"
       },
       "media_max_mb": {
         "type": "int",
@@ -441,6 +441,12 @@
         },
         "hint": "从这批最早未评估消息开始计算，防止持续聊天无限延期。冷却或退避可能延长等待；积极度0不补偿。"
       },
+      "decision_retention": {
+        "type": "int",
+        "description": "每个会话保留的反应条数",
+        "default": 100,
+        "hint": "至少 10 条。Controller 只读取最近 10 条反应。"
+      },
       "context_messages": {
         "type": "int",
         "description": "Controller 和主模型观察消息条数",
@@ -456,7 +462,7 @@
         "type": "int",
         "description": "Controller 话题字符预算",
         "default": 12000,
-        "hint": "正整数。按完整话题选取，超预算不截断，输入标明省略数量。每会话另外保留最近10条有效决策帮助延续情绪，重启保留，重置会话时清除。"
+        "hint": "正整数。按完整话题选取，超预算不截断，输入标明省略数量。模型另外读取最近10条有效决策帮助延续情绪，重启保留，重置会话时清除。"
       },
       "gate_timeout": {
         "type": "int",
@@ -640,7 +646,7 @@
         "condition": {
           "debug": true
         },
-        "hint": "将插件日志转发至 AstrBot 控制台，仍受宿主等级过滤。TRACK 以 DEBUG + [TRACK] 显示；关闭调试后仍按保存值生效。"
+        "hint": "规划与日记整理结果自动送到 AstrBot。开启后也转发其他插件日志，仍受宿主等级过滤。TRACK 以 DEBUG + [TRACK] 显示；关闭调试后仍按保存值生效。"
       }
     }
   }

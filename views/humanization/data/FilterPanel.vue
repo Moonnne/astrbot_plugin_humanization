@@ -70,7 +70,7 @@ function matchSession(value, query, item) {
     <v-divider class="my-5" />
     <v-text-field v-model="model.start" type="date" label="开始日期" hide-details class="mb-4" />
     <v-text-field v-model="model.end" type="date" label="结束日期" hide-details class="mb-4" />
-    <v-select v-model="model.sort" label="排序" :items="sorts" hide-details />
+    <v-select v-model="model.sort" label="排序" :items="category === 'messages' ? sorts.slice(0,2) : sorts" hide-details />
   </v-card>
 </template>
 <style scoped>

@@ -90,6 +90,18 @@ async def dashboard(plugin, tmp_path, config):
     return view
 
 
+async def test_grouped_message_index_and_exact_scope(dashboard):
+    _, page = await invoke(dashboard.records, query={"grouped": "1", "q": "天气"})
+    assert page["total"] == 1 and page["items"][0]["message_count"] == 1
+    scope = page["items"][0]["scope"]
+    _, detail = await invoke(dashboard.records, query={"scope": scope})
+    assert detail["total"] == 3 and all(
+        row["scope"] == scope for row in detail["items"]
+    )
+    _, absent = await invoke(dashboard.records, query={"scope": "unknown"})
+    assert absent["total"] == 0
+
+
 @pytest.mark.parametrize("category", ["messages", "decisions", "topics", "diaries"])
 async def test_browse_parses_json_and_scopes_data(dashboard, category):
     status, result = await invoke(

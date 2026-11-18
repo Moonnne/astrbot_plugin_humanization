@@ -35,7 +35,8 @@ async def test_recorder_start_and_commit_count(managed, private):
     assert "duration_seconds=" in complete["body"]
     assert (await managed.storage.session(message.scope))["cursor"] == 3
     assert "private source" not in str(rows)
-    assert not managed.log.console.mock_calls
+    managed.log.console.handle.assert_called_once()
+    assert "话题与日记整理完成" in managed.log.console.handle.call_args.args[0].msg
 
 
 @pytest.mark.parametrize(

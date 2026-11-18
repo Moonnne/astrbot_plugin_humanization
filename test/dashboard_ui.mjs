@@ -21,9 +21,13 @@ const scope = JSON.stringify(['onebot', '999', 'group', '123']);
 const rows = [1, 2].map(id => ({ id, key:JSON.stringify([scope,id]), scope,
   timestamp:1792346400, conversation:'onebot:GroupMessage:123', headline:`天气很好 ${id}`,
   text:`天气很好 ${id}`, sender_name:'测试用户', sender_id:'42', direction:'in',
-  segments:[{type:'text',text:'<script>window.UNSAFE = true</script>'},{type:'poke',target_id:'999'}],
+  resources:[], segments:[{type:'text',text:`天气很好 ${id}`},{type:'text',text:'<script>window.UNSAFE = true</script>'},{type:'poke',target_id:'999'}],
 }));
 rows[1].headline = '这是一段需要省略显示但悬停时应完整保留的内容。'.repeat(16);
+rows[0].segments.push({type:'image',resource_id:'img'});
+rows[0].resources.push({id:'img',kind:'image',name:'海岸.png',path:'image/img.png',size:128,description:'海边的海鸥'});
+rows[1].segments.push({type:'image',resource_id:'old'});
+rows[1].resources.push({id:'old',kind:'image',name:'旧图.jpg',path:'',size:100,description:'过期图片转述'});
 const records = {
   messages:rows,
   decisions:rows.map((row,index)=>({...row, headline:'根据当前话题简短回应', outcome:index ? 'processed' : 'unconfirmed', decision_json:{reply:true,emotion:{primary:'SELF_CONSCIOUS',intensity:1},plan:{guidance:'简短接话'}}})),
@@ -51,7 +55,9 @@ window.addEventListener('message', event => {
   window.calls.push(m); let data;
   if(m.endpoint==='overview') data={stats:{sessions:2,messages:2,topics:2,diaries:2,decisions:2,planned_replies:2},sessions:[{title:'测试群',value:'onebot:GroupMessage:123',umo:'onebot:GroupMessage:123'},{title:'测试私聊',value:'onebot:FriendMessage:456',umo:'onebot:FriendMessage:456'}],timezone:'Asia/Shanghai'};
   if(m.endpoint==='records') {const items=records[m.params.category].filter(r=>!(window.deleted[m.params.category]||[]).includes(r.key));data={items,total:items.length};}
+  if(m.endpoint==='records' && m.params.grouped==='1') data={items:[{scope:records.messages[0].scope,conversation:records.messages[0].conversation,timestamp:1792346400,message_count:2}],total:1};
   if(m.endpoint==='records/delete') { (window.deleted[m.body.category] ||= []).push(...m.body.keys); data={deleted:m.body.keys.length}; }
+  if(m.endpoint==='resource') data={kind:'image',url:'/api/file/test-logo'};
   if(m.endpoint==='settings') data=settings;
   if(m.endpoint==='prompts/diff') {
     const original=settings.prompt_defaults[m.body.name], draft=m.body.text.trim() ? m.body.text : original;
@@ -111,10 +117,16 @@ try {
   await expect(view.getByRole('button',{name:'刷新数据'})).not.toHaveClass(/v-btn--loading/);
   await page.screenshot({path:join(output,'overview.png'),animations:'disabled'});
   await view.getByRole('tab',{name:'聊天',exact:true}).click();
+  const enterChat = () => view.locator('.records-list .v-list-item').filter({hasText:'测试群'}).first().click();
+  await enterChat();
+  await expect(view.getByAltText('海岸.png')).toBeVisible();
+  await expect(view.getByText('海边的海鸥',{exact:true})).toBeVisible();
+  await expect(view.getByText('过期图片转述',{exact:true})).toBeVisible();
+  await expect(view.getByAltText('旧图.jpg')).toHaveCount(0);
   await expect(view.getByText('天气很好 1',{exact:true})).toBeVisible();
   await expect(view.getByRole('complementary',{name:'数据筛选'})).toBeVisible();
   if (process.argv.includes('--table-sorting')) {
-    for (const category of ['聊天','最近反应','话题','日记']) {
+    for (const category of ['最近反应','话题','日记']) {
       await view.getByRole('tab',{name:category,exact:true}).click();
       for (const [title,key] of [[category === '最近反应' ? '规划原因' : '内容','headline'],['时间','timestamp'],['会话','conversation'],[category === '聊天' ? '发送者' : '状态','state']]) {
         const header = view.locator('thead th').filter({hasText:title});
@@ -128,9 +140,11 @@ try {
       }
     }
     await view.getByRole('tab',{name:'聊天',exact:true}).click();
+    await enterChat();
     console.log('Sortable headers switch the query column and both directions.');
   }
   if (process.argv.includes('--workspace-upgrade')) {
+    await view.getByRole('tab',{name:'话题',exact:true}).click();
     await expect(view.locator('.session-name').first()).toHaveText('测试群');
     await expect(view.locator('.session-name').first()).toHaveAttribute('title','onebot · 群聊 · 测试群\nonebot:GroupMessage:123');
     const wrapper = view.locator('.records-table .v-table__wrapper');
@@ -161,6 +175,7 @@ try {
     await separator.dblclick();
     await wrapper.evaluate(el=>el.scrollLeft=0);
     expect(await view.locator('tbody td').first().evaluate(el=>parseFloat(getComputedStyle(el).paddingTop))).toBeGreaterThanOrEqual(12);
+    await view.getByRole('tab',{name:'聊天',exact:true}).click(); await enterChat();
   }
   if (process.argv.includes('--filter-regression')) {
     await page.emulateMedia({reducedMotion:'no-preference'});
@@ -215,9 +230,9 @@ try {
   await expect(view.getByRole('button',{name:'私聊',exact:true})).toHaveCSS('background-color','rgb(255, 255, 255)');
   await expect(view.getByRole('button',{name:'私聊',exact:true})).toHaveCSS('height','34px');
   await view.getByRole('button',{name:'发出回复',exact:true}).click();
-  await expect.poll(()=>page.evaluate(()=>window.calls.at(-1)?.params?.sessions)).toBe(JSON.stringify(['onebot:GroupMessage:123','onebot:FriendMessage:456']));
-  await expect.poll(()=>page.evaluate(()=>window.calls.at(-1)?.params?.kind)).toBe('out');
-  await expect.poll(()=>page.evaluate(()=>window.calls.at(-1)?.params?.chat_type)).toBe('group');
+  await expect.poll(()=>page.evaluate(()=>window.calls.filter(c=>c.endpoint==='records').at(-1)?.params?.sessions)).toBe(JSON.stringify(['onebot:GroupMessage:123','onebot:FriendMessage:456']));
+  await expect.poll(()=>page.evaluate(()=>window.calls.filter(c=>c.endpoint==='records').at(-1)?.params?.kind)).toBe('out');
+  await expect.poll(()=>page.evaluate(()=>window.calls.filter(c=>c.endpoint==='records').at(-1)?.params?.chat_type)).toBe('group');
   await view.getByRole('button',{name:'重置筛选'}).click();
   await view.getByLabel('查看详情').first().click();
   await expect(view.getByRole('dialog')).toContainText('<script>window.UNSAFE = true</script>');
@@ -230,9 +245,10 @@ try {
   await page.screenshot({path:join(output,'details.png')});
   await view.getByRole('button',{name:'关闭',exact:true}).click();
   await view.getByLabel('搜索关键词',{exact:true}).fill('天气');
-  await expect.poll(()=>page.evaluate(()=>window.calls.at(-1)?.params?.q)).toBe('天气');
-  await view.locator('thead th').filter({hasText:'时间'}).click();
-  await expect.poll(()=>page.evaluate(()=>window.calls.at(-1)?.params?.order)).toBe('asc');
+  await expect.poll(()=>page.evaluate(()=>window.calls.filter(c=>c.endpoint==='records').at(-1)?.params?.q)).toBe('天气');
+  await view.locator('.v-select').filter({hasText:'排序'}).click();
+  await view.getByRole('option',{name:'时间：从旧到新'}).click();
+  await expect.poll(()=>page.evaluate(()=>window.calls.filter(c=>c.endpoint==='records').at(-1)?.params?.order)).toBe('asc');
   await view.getByRole('checkbox').first().check();
   await view.getByRole('button',{name:'删除所选'}).click();
   await expect(view.getByRole('dialog')).toContainText('2 条');
@@ -276,7 +292,7 @@ try {
     await expect(black).toHaveCount(0);
     await expect(white.getByText('旁观',{exact:true})).toBeVisible();
     await white.getByRole('button',{name:'选择或添加会话',exact:true}).click();
-    await expect(view.getByText(/当前插件不支持处理/)).toBeVisible();
+    await expect(view.getByText(/· 支持语音记录/)).toBeVisible();
     await expect.poll(()=>view.locator('img[alt="OneBot"]').first().evaluate(img=>img.complete && img.naturalWidth > 0)).toBeTruthy();
     await view.getByLabel('搜索会话名称或 ID',{exact:true}).fill('测试群');
     await expect(view.locator('[aria-label="可选会话"]')).not.toContainText('测试私聊');

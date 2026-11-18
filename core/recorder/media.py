@@ -8,11 +8,13 @@ import re
 import socket
 import time
 import uuid
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, build_opener
 
 from ...models.resource import Resource
+from ..astrbot_adapter import adapter_transcript
 
 
 def public_url(url):
@@ -231,13 +233,28 @@ class Media:
                         source = (
                             getattr(part, "url", "") or getattr(part, "file", "") or ""
                         )
+                        if kind == "record":
+                            for candidate in (
+                                getattr(part, "path", None),
+                                getattr(part, "file", None),
+                            ):
+                                if (
+                                    candidate
+                                    and not str(candidate).startswith(
+                                        ("http:", "https:", "base64:", "data:", "file:")
+                                    )
+                                    and Path(candidate).is_file()
+                                ):
+                                    source = str(candidate)
+                                    break
                         if not str(source).startswith(("http://", "https://")):
-                            async with asyncio.timeout(30):
-                                source = await (
-                                    part.get_file()
-                                    if kind == "file"
-                                    else part.convert_to_file_path()
-                                )
+                            if not source or not Path(source).is_file():
+                                async with asyncio.timeout(30):
+                                    source = await (
+                                        part.get_file()
+                                        if kind == "file"
+                                        else part.convert_to_file_path()
+                                    )
                         r.name = str(
                             getattr(part, "name", "")
                             or Path(urlsplit(str(source)).path).name
@@ -407,14 +424,39 @@ class Media:
             )
         await self.render(row["message_row"])
 
+    @asynccontextmanager
+    async def audio(self, row):
+        """Normalize by audio signature, independent of the attachment suffix."""
+        from astrbot.core.utils.media_utils import ensure_wav
+
+        source = self.path(row["path"])
+        target = self.path(f"record/{uuid.uuid4().hex}.wav")
+        try:
+            async with asyncio.timeout(30):
+                result = await ensure_wav(str(source), output_path=str(target))
+                if Path(result) != target:
+                    await asyncio.to_thread(self.copy, result, target)
+            yield str(target)
+        finally:
+            target.unlink(missing_ok=True)
+
     async def stt(self, row):
         provider = await self.context.get_using_stt_provider_async(row["umo"])
         if not provider or not row["path"]:
+            self.log.warning(
+                "media.stt.unavailable",
+                resource=row["id"],
+                reason="no_provider" if not provider else "no_file",
+            )
             return ""
-        async with asyncio.timeout(30):
-            return await provider.get_text(audio_url=str(self.path(row["path"])))
+        async with self.audio(row) as path, asyncio.timeout(30):
+            return await provider.get_text(audio_url=path)
 
     async def batch(self, rows):
+        async with AsyncExitStack() as audio_stack:
+            await self._batch(rows, audio_stack)
+
+    async def _batch(self, rows, audio_stack):
         provider_id = (
             self.settings.recorder.get("media_provider", "")
             or self.settings.recorder["summary_provider"]
@@ -444,29 +486,35 @@ class Media:
             item = {"id": row["id"], "type": row["kind"], "name": row["name"]}
             try:
                 if row["kind"] == "record":
-                    result = await self.action(
-                        row, "fetch_ptt_text", message_id=row["message_id"]
-                    )
-                    if result.get("text"):
-                        await self.finish(row, result["text"], provider="adapter_stt")
+                    text = await adapter_transcript(self.context, row)
+                    if text:
+                        await self.finish(row, text, provider="adapter_stt")
                         continue
-            except Exception:
-                pass
+            except Exception as exc:
+                self.log.warning(
+                    "media.stt.adapter.failed",
+                    resource=row["id"],
+                    error_type=type(exc).__name__,
+                )
+            if row["kind"] == "record":
+                try:
+                    text = await self.stt(row)
+                    if text and text.strip():
+                        await self.finish(row, text.strip(), provider="native_stt")
+                        continue
+                except Exception as exc:
+                    self.log.warning("media.stt.native.failed", resource=row["id"], error_type=type(exc).__name__)
             try:
                 if row["kind"] == "image" and "image" in modalities:
                     images.append(str(self.path(row["path"])))
                     item["image_index"] = len(images)
                 elif row["kind"] == "record" and "audio" in modalities:
-                    audios.append(str(self.path(row["path"])))
+                    audios.append(
+                        await audio_stack.enter_async_context(self.audio(row))
+                    )
                     item["audio_index"] = len(audios)
                 elif row["kind"] == "record":
-                    text = await self.stt(row)
-                    await self.finish(
-                        row,
-                        text or row["description"],
-                        "ready" if text else "skipped",
-                        "native_stt",
-                    )
+                    await self.finish(row, row["description"], "skipped")
                     continue
                 elif (
                     row["kind"] == "file"
@@ -491,7 +539,13 @@ class Media:
                     text_budget = max(0, text_budget - len(content))
                 selected.append(row)
                 items.append(item)
-            except Exception:
+            except Exception as exc:
+                self.log.warning(
+                    "media.prepare.failed",
+                    resource=row["id"],
+                    kind=row["kind"],
+                    error_type=type(exc).__name__,
+                )
                 await self.finish(row, row["description"], "failed")
         if not selected:
             return
@@ -511,19 +565,21 @@ class Media:
                 decoded = json.loads(response.completion_text)
                 if isinstance(decoded, dict):
                     results = decoded
-            except Exception:
-                self.log.warning("media.batch.failed", count=len(selected))
+            except Exception as exc:
+                self.log.warning(
+                    "media.batch.failed",
+                    count=len(selected),
+                    provider=provider_id,
+                    error_type=type(exc).__name__,
+                    status_code=getattr(exc, "status_code", None),
+                )
+        ready_count = 0
         for row in selected:
             used_provider = provider_id
             text = results.get(row["id"])
             if not isinstance(text, str) or not text.strip():
                 text = ""
-                if row["kind"] == "record":
-                    try:
-                        text = await self.stt(row)
-                        used_provider = "native_stt"
-                    except Exception:
-                        pass
+            ready_count += bool(text)
             await self.finish(
                 row,
                 text[:4000] if text else row["description"],
@@ -533,6 +589,8 @@ class Media:
         self.log.info(
             "media.batch.complete",
             count=len(selected),
+            ready=ready_count,
+            failed=len(selected) - ready_count,
             duration_seconds=round(time.monotonic() - started, 2),
         )
 

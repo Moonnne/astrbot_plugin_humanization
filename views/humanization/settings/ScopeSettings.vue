@@ -30,7 +30,7 @@ function label(umo) { return names.value.get(umo) || umo.split(':').slice(2).joi
 function detail(umo) {
   const platform = platforms.value.get(umo);
   const adapter = platform?.adapter_name || platform?.adapter_type || '适配器未知';
-  const status = platform?.supported === false ? ' · 当前插件不支持处理' : platform?.supported == null ? ' · 支持状态待确认' : '';
+  const status = platform?.supported === false ? ' · 支持语音记录' : platform?.supported == null ? ' · 支持状态待确认' : '';
   return `${umo.split(':')[0]} · ${adapter} · ${umo.includes(':GroupMessage:') ? '群聊' : '私聊'} · ${umo.split(':').slice(2).join(':')}${status}`;
 }
 function action(umo) {
@@ -95,7 +95,7 @@ watch(mode, () => { picker.value = false; });
     <v-card>
       <v-card-title class="text-h3 pa-4 pb-0 pl-6">选择或添加会话</v-card-title>
       <v-card-text>
-        <p class="text-body-2 text-medium-emphasis mb-3">展示各适配器的已有会话；当前处理能力仍仅支持 OneBot（含 SnowLuma），其他平台会标明不支持。未知会话可用 /sid 获取 UMO 后手工添加。</p>
+        <p class="text-body-2 text-medium-emphasis mb-3">展示各适配器的已有会话；完整对话接管支持 OneBot（含 SnowLuma），其他平台支持标准语音消息的记录与转写。未知会话可用 /sid 获取 UMO 后手工添加。</p>
         <v-text-field v-model="search" label="搜索会话名称或 ID" :prepend-inner-icon="mdiMagnify" hide-details clearable @click:clear="search = ''" />
         <div class="d-flex ga-2 my-3" role="group" aria-label="会话类型">
           <v-btn v-for="[value,title] in [['','全部'],['GroupMessage','群聊'],['FriendMessage','私聊']]" :key="title" size="small" :color="kind === value ? 'primary' : undefined" :aria-pressed="kind === value" @click="kind = value">{{ title }}</v-btn>

@@ -356,14 +356,17 @@ class PluginLog:
             self.info("model.complete", **fields)
 
     def _emit(self, level, event, fields, *, exception=False, source=None):
-        if not self.enabled(level):
-            return
-        if event in (
+        local = self.enabled(level)
+        outcome = event in {
             "gate.complete",
             "gate.failed",
             "summary.complete",
             "summary.failed",
-        ):
+        }
+        if not local and not outcome:
+            return
+        result_fields = dict(fields)
+        if outcome:
             if counters := self.usage.get():
                 fields = {**counters, **fields}
                 counters.clear()
@@ -400,10 +403,44 @@ class PluginLog:
         )
         record.levelname = level
         record.operation = self.trace.get()
-        self._submit(record)
-        if self.echo:
+        if local:
+            self._submit(record)
+        if outcome or (local and self.echo):
             # TRACK is a local severity, not an unsupported sixth host severity.
             echoed = logging.makeLogRecord(record.__dict__.copy())
+            if outcome:
+                labels = {
+                    "gate.complete": "行为规划完成",
+                    "gate.failed": "行为规划失败",
+                    "summary.complete": "话题与日记整理完成",
+                    "summary.failed": "话题与日记整理失败",
+                }
+                keys = (
+                    "conversation",
+                    "action",
+                    "emotion",
+                    "reason",
+                    "day",
+                    "message_count",
+                    "added_topics",
+                    "updated_topics",
+                )
+                values = self.redact(
+                    {k: result_fields[k] for k in keys if k in result_fields}
+                )
+                echoed.msg = (
+                    labels[event]
+                    + " "
+                    + " ".join(f"{k}={self._value(k, v)}" for k, v in values.items())
+                )
+                if exception:
+                    echoed.msg += "\n" + (
+                        text.split("\n", 1)[-1]
+                        if self.mask
+                        else self.redact(
+                            "".join(traceback.format_exception(*sys.exc_info()))
+                        )
+                    )
             if record.operation:
                 echoed.msg += f" [id={record.operation}]"
             if level == "TRACK":

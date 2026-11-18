@@ -60,6 +60,74 @@ class ScopeFilter(filter.CustomFilter):
         return settings.scope_action(event.unified_msg_origin, group_umo) != "ignore"
 
 
+class PlatformVoiceFilter(filter.CustomFilter):
+    """Keep voice components while the host preprocesses another platform's event."""
+
+    def filter(self, event, cfg):
+        if event.get_platform_name() == "aiocqhttp":
+            return False
+        settings = ScopeFilter.settings
+        if (
+            not settings
+            or not settings.recorder["enabled"]
+            or event.get_message_type()
+            not in (MessageType.GROUP_MESSAGE, MessageType.FRIEND_MESSAGE)
+        ):
+            return False
+        group = f"{event.get_platform_id()}:GroupMessage:{event.get_group_id()}"
+        if settings.scope_action(event.unified_msg_origin, group) not in (
+            "active",
+            "observe",
+            "listen",
+        ):
+            return False
+        records = {
+            i: p
+            for i, p in enumerate(event.get_messages())
+            if p.type.lower() == "record"
+        }
+        if records and event.get_platform_name() == "qq_official":
+            raw = event.message_obj.raw_message
+            attachments = (
+                raw.get("attachments", [])
+                if isinstance(raw, dict)
+                else getattr(raw, "attachments", [])
+            )
+            texts = []
+            for item in attachments or ():
+                get = (
+                    item.get
+                    if isinstance(item, dict)
+                    else lambda k, default=None: getattr(item, k, default)
+                )
+                kind = str(get("content_type") or "").lower()
+                filename = str(get("filename") or "").lower()
+                if kind.startswith(("voice", "audio")) or filename.endswith(
+                    (".wav", ".silk", ".amr", ".mp3", ".ogg", ".m4a")
+                ):
+                    texts.append(get("asr_refer_text"))
+            if len(texts) == len(records):
+                for (index, part), text in zip(records.items(), texts):
+                    if isinstance(text, str) and text.strip():
+                        records[index] = part.copy(update={"text": text.strip()})
+        if records:
+            event.set_extra("humanization_voice_parts", records)
+        return bool(records)
+
+
+async def adapter_transcript(context, row):
+    platform = context.get_platform_inst(row["platform"])
+    if not platform or platform.meta().name != "aiocqhttp":
+        # QQ Official supplies Record attachments, without a transcription RPC.
+        return ""
+    async with asyncio.timeout(8):
+        result = await platform.get_client().call_action(
+            "fetch_ptt_text", message_id=row["message_id"]
+        )
+    data = result.get("data", result) if isinstance(result, dict) else {}
+    return str((data or {}).get("text") or "").strip()
+
+
 class IdleEvent(AstrMessageEvent):
     """A scheduler event using the group's shared route, never a member's UMO."""
 

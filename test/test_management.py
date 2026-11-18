@@ -323,7 +323,11 @@ async def test_native_waking_and_handlers_remain_silent_for_denied_commands(
         if stopped:
             break
     assert stopped and event.call_llm
-    assert event.sent == []
+    if admin and not enabled:
+        assert len(event.sent) == 1
+        assert "未启用" in event.sent[0].get_plain_text()
+    else:
+        assert event.sent == []
     assert not await managed.storage.rows("SELECT * FROM messages")
 
 

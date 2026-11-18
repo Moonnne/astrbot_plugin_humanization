@@ -2,6 +2,7 @@
 import { ref, reactive, computed, watch, inject, onBeforeUnmount } from 'vue';
 import { mdiFilterVariant, mdiDeleteOutline, mdiEyeOutline } from '@mdi/js';
 import JsonValue from '../shared/JsonValue.vue';
+import ChatMessages from './ChatMessages.vue';
 import FilterPanel from './FilterPanel.vue';
 import ResizableHeaders from './ResizableHeaders.vue';
 import { sessionLabel } from '../shared/session.js';
@@ -12,6 +13,14 @@ const bridge = inject('bridge');
 const defaults = {q:'', sessions:[], chat_type:'', start:'', end:'', kind:'', sender:'', component:'', reply:'', emotion:'', required:'', trigger:'', participant:'', bot_reply:'', coverage_gap:'', sort:'timestamp:desc'};
 const filters = reactive({...defaults, sessions:[]});
 const filtersOpen = ref(true);
+const currentChat = ref(null);
+const grouped = computed(() => props.category === 'messages' && !currentChat.value);
+function openChat(chat) {
+  currentChat.value = chat;
+  page.value = 1;
+  rows.value = []; selected.value = []; total.value = 0;
+  ++generation; clearTimeout(timer); load();
+}
 const sessionTitles = computed(() => Object.fromEntries(props.sessions.map(item => [item.umo,item.title !== item.umo ? item.title : item.umo.split(':').slice(2).join(':')])));
 const defaultWidths = {timestamp:168,conversation:172,headline:216,state:132,actions:88};
 const widths = reactive({...defaultWidths});
@@ -43,7 +52,7 @@ async function load() {
   loading.value = true; error.value = ''; selected.value = [];
   try {
     const [key,order] = filters.sort.split(':');
-    const data = await bridge.apiGet('records', {...filters, sessions:JSON.stringify(filters.sessions), category:props.category, page:page.value, limit:limit.value, sort:key, order});
+    const data = await bridge.apiGet('records', {...filters, sessions:JSON.stringify(filters.sessions), category:props.category, grouped:grouped.value ? '1':'0', scope:currentChat.value?.scope || '', page:page.value, limit:limit.value, sort:key, order});
     if (current !== generation) return;
     rows.value = data.items; total.value = data.total;
     const lastPage = Math.max(1, Math.ceil(data.total / limit.value));
@@ -79,9 +88,11 @@ const detailFields = computed(() => {
   <v-alert v-if="error" type="error" variant="tonal" class="mb-4">{{ error }}</v-alert>
   <v-alert v-if="success" type="success" variant="tonal" closable class="mb-4" @click:close="success = ''">{{ success }}</v-alert>
   <div class="d-flex align-center flex-wrap ga-3 mb-4">
+    <v-btn v-if="currentChat" variant="text" @click="openChat(null)">返回会话</v-btn>
+    <strong v-if="currentChat" class="session-name">{{ sessionTitles[currentChat.conversation] || currentChat.conversation }}</strong>
     <v-btn :prepend-icon="mdiFilterVariant" :aria-expanded="filtersOpen" aria-controls="record-filters" @click="filtersOpen = !filtersOpen">{{ filtersOpen ? '隐藏筛选' : '显示筛选' }}</v-btn>
-    <div class="text-body-2 text-medium-emphasis flex-grow-1">共 {{ total }} 条 · 已选 {{ selected.length }} 条（当前页）</div>
-    <v-btn color="error" :prepend-icon="mdiDeleteOutline" :disabled="!selected.length || loading" @click="confirm = true">删除所选</v-btn>
+    <div class="text-body-2 text-medium-emphasis flex-grow-1">共 {{ total }} {{ grouped ? "个会话" : "条" }} <span v-if="!grouped">· 已选 {{ selected.length }} 条（当前页）</span></div>
+    <v-btn v-if="!grouped" color="error" :prepend-icon="mdiDeleteOutline" :disabled="!selected.length || loading" @click="confirm = true">删除所选</v-btn>
   </div>
   <div class="records-layout">
     <v-expand-x-transition>
@@ -90,7 +101,25 @@ const detailFields = computed(() => {
       </div>
     </v-expand-x-transition>
     <v-card class="records-list" rounded="xl">
-    <v-data-table-server v-model="selected" v-model:page="page" v-model:items-per-page="limit" v-model:sort-by="sort" class="records-table" :style="{'--records-width':`${tableWidth}px`}" :headers="headers" :items="rows" :items-length="total" :loading="loading" :items-per-page-options="[10,25,50,100]" :mobile="false" item-value="key" show-select select-strategy="page" must-sort hover>
+    <template v-if="category === 'messages'">
+      <v-progress-linear v-if="loading" indeterminate />
+      <v-list v-if="grouped" aria-label="会话">
+        <v-list-item v-for="chat in rows" :key="chat.scope" :title="sessionTitles[chat.conversation] || chat.conversation.split(':').slice(2).join(':')" :subtitle="sessionLabel(chat.conversation, sessionTitles[chat.conversation]) + ' · ' + chat.message_count + ' 条'" @click="openChat(chat)">
+          <template #append><small>{{ time(chat.timestamp) }}</small></template>
+        </v-list-item>
+      </v-list>
+      <div v-else>
+        <v-checkbox-btn label="选择当前页" :model-value="!!rows.length && selected.length === rows.length" @update:model-value="selected = $event ? rows.map(row=>row.key) : []" />
+        <ChatMessages v-model="selected" :rows="rows" :time="time" @detail="detail = $event" @remove="removeOne" />
+      </div>
+      <p v-if="!loading && !rows.length" class="pa-4 text-medium-emphasis">没有符合条件的记录</p>
+      <div class="d-flex align-center justify-center ga-3 pa-2">
+        <v-btn variant="text" :disabled="page <= 1" @click="page--">上一页</v-btn>
+        {{ page }} / {{ Math.max(1, Math.ceil(total / limit)) }}
+        <v-btn variant="text" :disabled="page * limit >= total" @click="page++">下一页</v-btn>
+      </div>
+    </template>
+    <v-data-table-server v-else v-model="selected" v-model:page="page" v-model:items-per-page="limit" v-model:sort-by="sort" class="records-table" :style="{'--records-width':`${tableWidth}px`}" :headers="headers" :items="rows" :items-length="total" :loading="loading" :items-per-page-options="[10,25,50,100]" :mobile="false" item-value="key" show-select select-strategy="page" must-sort hover>
       <template #headers="controls"><ResizableHeaders v-bind="controls" :widths="widths" :defaults="defaultWidths" @resize="widths[$event.key] = $event.width" /></template>
       <template #item.timestamp="{item}">{{ time(item.timestamp) }}</template>
       <template #item.conversation="{item}">

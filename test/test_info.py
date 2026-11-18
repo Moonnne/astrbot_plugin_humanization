@@ -286,4 +286,16 @@ async def test_native_info_parser_and_management_guard_preserve_db_and_reset_req
     assert event.call_llm and event.is_stopped()
     assert len(await named.storage.rows("SELECT * FROM messages")) == 6
     assert named.admin.pending == pending
+
+
+async def test_disabled_management_explains_to_admin(named):
+    from astrbot.core.pipeline.context_utils import call_handler
+
+    named.settings.management["enabled"] = False
+    instance = Humanization.__new__(Humanization)
+    instance.runtime = named
+    event = admin_event("/hum info")
+    await consume(call_handler(event, instance.management_guard))
+    assert event.get_result() is not None
+    assert "未启用" in event.get_result().get_plain_text()
     named.context.conversation_manager.new_conversation.assert_not_awaited()

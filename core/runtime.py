@@ -80,6 +80,9 @@ class Runtime:
                 data_dir / "chat" / "db" / "chat.sqlite3",
                 self.settings.recorder["retention"],
                 self.log,
+                decision_retention=self.settings.controller.get(
+                    "decision_retention", 100
+                ),
             )
             self.media = Media(self.storage, self.settings, context, self.log)
             self.storage.media = self.media
@@ -295,6 +298,37 @@ class Runtime:
                 )
             else:
                 self.log.debug("message.filtered", reason="duplicate")
+
+    async def record_platform_voice(self, event):
+        if (
+            self.closed
+            or self.resetting_all
+            or self.adapter.is_plugin_command(event)
+            or (
+                self.settings.recorder["filter_commands"]
+                and self.adapter.is_command(event)
+            )
+            or event.get_self_id() == event.get_sender_id()
+        ):
+            return
+        message = self.adapter.snapshot(event)
+        parts = list(event.get_messages())
+        for index, record in event.get_extra("humanization_voice_parts", {}).items():
+            if index >= len(parts):
+                continue
+            if record.text and parts[index].type.lower() in ("record", "plain"):
+                parts[index] = record
+            elif isinstance(parts[index], Plain):
+                # Native preprocessing already transcribed this attachment.
+                parts[index] = record.copy(update={"text": parts[index].text})
+        async with self.record_locks.setdefault(message.scope, asyncio.Lock()):
+            if (
+                not self.closed
+                and not self.resetting_all
+                and message.received_at >= self.reset_since.get(message.scope, 0)
+                and await self.storage.append(message)
+            ):
+                await self.media.capture(message, parts)
 
     async def participate(self, event: AstrMessageEvent):
         if (
@@ -797,7 +831,10 @@ class Runtime:
                         + self.settings.proactive["check_minutes"] * 60,
                     )
                     for platform in self.context.platform_manager.get_insts():
-                        if platform.meta().id == session["platform"]:
+                        if (
+                            platform.meta().id == session["platform"]
+                            and platform.meta().name == "aiocqhttp"
+                        ):
                             event = IdleEvent(
                                 self.context, platform.meta(), session, self.generation
                             )

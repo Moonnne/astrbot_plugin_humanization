@@ -1,14 +1,15 @@
 <script setup>
+import { formatBytes } from '../shared/size.js';
 defineProps({ stats: Object });
 defineEmits(['browse']);
-const cards = [['sessions','会话',null],['messages','聊天记录','messages'],['topics','话题','topics'],['diaries','日记日期','diaries'],['decisions','近期决策','decisions'],['planned_replies','决定回复','decisions'],['resources','媒体与链接','messages'],['resource_bytes','媒体大小（字节）',null]];
+const cards = [['sessions','会话',null],['messages','聊天记录','messages'],['topics','话题','topics'],['diaries','日记日期','diaries'],['decisions','近期决策','decisions'],['planned_replies','决定回复','decisions'],['resources','媒体与链接','messages'],['resource_bytes','媒体大小',null]];
 </script>
 <template>
   <v-row>
     <v-col v-for="[key,label,target] in cards" :key="key" cols="12" sm="6" lg="4">
       <v-card class="pa-5 h-100" :link="!!target" @click="target && $emit('browse',target)">
         <div class="text-body-2 text-medium-emphasis mb-3">{{ label }}</div>
-        <div class="text-h4 font-weight-bold">{{ (stats[key] || 0).toLocaleString() }}</div>
+        <div class="text-h4 font-weight-bold">{{ key === 'resource_bytes' ? formatBytes(stats[key]) : (stats[key] || 0).toLocaleString() }}</div>
       </v-card>
     </v-col>
   </v-row>

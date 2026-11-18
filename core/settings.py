@@ -40,6 +40,9 @@ class Settings:
         if not 1 <= int(self.recorder.get("media_max_mb", 50)) <= 1024:
             raise ValueError("Media size limit must be between 1 and 1024 MiB")
         self.controller = config["controller"]
+        retention = self.controller.get("decision_retention", 100)
+        if type(retention) is not int or retention < 10:
+            raise ValueError("反应保留条数必须是至少 10 的整数")
         self.proactive = config["proactive"]
         self.prompts = config["prompts"]
         for key in ("outside_action", "blacklist_action"):

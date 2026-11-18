@@ -174,6 +174,7 @@ class Dashboard:
         )
         args = {
             "sessions": json.dumps(sessions),
+            "scope": request.query.get("scope", ""),
             "chat_type": request.query.get("chat_type", ""),
             "q": request.query.get("q", ""),
             "kind": request.query.get("kind", ""),
@@ -210,6 +211,12 @@ class Dashboard:
             if sort == "state"
             else sort
         )
+        grouped = category == "messages" and request.query.get("grouped") == "1"
+        source = self.sql["dashboard.filtered"].format(source=source, filters=filters)
+        if grouped:
+            source = self.sql["dashboard.grouped_messages"].format(source=source)
+            sort_expression = "timestamp"
+
         # Only fixed resource names and whitelisted sort identifiers enter SQL.
         async with self.database.snapshot() as tx:
             total = (
@@ -220,11 +227,18 @@ class Dashboard:
             )[0]["total"]
             rows = await tx.rows(
                 self.sql["dashboard.page"].format(
-                    source=source, filters=filters, order=f"{sort_expression} {order}"
+                    source=source,
+                    filters=filters,
+                    order=f"{sort_expression} {order}, scope"
+                    if grouped
+                    else f"{sort_expression} {order}, scope, id",
                 ),
                 args,
             )
             for row in rows:
+                if grouped:
+                    row["conversation"] = self.conversation(row["scope"])
+                    continue
                 row.pop("search")
                 row["key"] = json.dumps([row["scope"], row["id"]], ensure_ascii=False)
                 row["conversation"] = self.conversation(row["scope"])
@@ -243,6 +257,8 @@ class Dashboard:
                     )
                     for resource in row["resources"]:
                         resource.pop("source", None)
+                        if resource["path"] and not self.runtime.media.path(resource["path"]).is_file():
+                            resource["path"] = ""
         return json_response({"items": rows, "total": total})
 
     async def delete(self):

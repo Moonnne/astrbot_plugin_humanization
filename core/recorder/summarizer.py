@@ -229,6 +229,7 @@ class Summarizer:
         )
         self.log.info(
             "summary.complete",
+            day=day,
             conversation=session["umo"]
             if session["private"]
             else f"{session['platform']}:GroupMessage:{session['group_id']}",

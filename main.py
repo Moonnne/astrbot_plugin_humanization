@@ -1,5 +1,6 @@
 """AstrBot lifecycle and event registration for Humanization."""
 
+import asyncio
 from contextlib import aclosing
 from sys import maxsize
 
@@ -7,7 +8,7 @@ from astrbot.api import AstrBotConfig
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools
 
-from .core.astrbot_adapter import InternalEventFilter, ScopeFilter
+from .core.astrbot_adapter import InternalEventFilter, PlatformVoiceFilter, ScopeFilter
 from .core.dashboard import Dashboard
 from .core.management import ManagementAccessFilter, ManagementMessageFilter
 from .core.runtime import Runtime
@@ -67,7 +68,25 @@ class Humanization(Star):
     async def management_guard(self, event: AstrMessageEvent):
         event.should_call_llm(True)
         event.set_extra("humanization_management", True)
+        self.runtime.log.info(
+            "admin.command.received",
+            admin=event.is_admin(),
+            enabled=self.runtime.settings.management["enabled"],
+            woken=event.is_at_or_wake_command,
+        )
         if not self.runtime.admin.allowed(event):
+            reason = (
+                "disabled"
+                if not self.runtime.settings.management["enabled"]
+                else "not_admin"
+            )
+            self.runtime.log.info("admin.command.denied", reason=reason)
+            if event.is_admin() and not self.runtime.closed:
+                event.set_result(
+                    event.plain_result(
+                        "Humanization 管理指令未启用，请在插件设置的管理指令中开启后重试 /hum info"
+                    )
+                )
             event.stop_event()
 
     @filter.custom_filter(ManagementAccessFilter)
@@ -79,9 +98,16 @@ class Humanization(Star):
     @hum.command("info")
     @filter.permission_type(filter.PermissionType.ADMIN, raise_error=False)
     async def info(self, event: AstrMessageEvent, umo: str = ""):
-        text = await self.runtime.admin.info(event, umo)
+        self.runtime.log.info("admin.info.start")
+        try:
+            async with asyncio.timeout(15):
+                text = await self.runtime.admin.info(event, umo)
+        except Exception:
+            self.runtime.log.exception("admin.info.failed")
+            text = "Humanization 查询失败，详情已记录到 humanization.log"
         if text:
             yield event.plain_result(text)
+        self.runtime.log.info("admin.info.complete", replied=bool(text))
         event.stop_event()
 
     @hum.custom_filter(ManagementAccessFilter)
@@ -133,6 +159,10 @@ class Humanization(Star):
         async with aclosing(self.runtime.observe(event)) as generator:
             async for result in generator:
                 yield result
+
+    @filter.custom_filter(PlatformVoiceFilter, priority=10000)
+    async def record_platform_voice(self, event: AstrMessageEvent):
+        await self.runtime.record_platform_voice(event)
 
     # Run internal events before the host's incoming-message recorder and waiters.
     @filter.custom_filter(InternalEventFilter, priority=maxsize + 1)

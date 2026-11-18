@@ -12,7 +12,12 @@ INSERT INTO controller_decisions(scope, created_at, observed_through_seq, last_h
 -- name: record_decision_delete
 DELETE FROM controller_decisions
 WHERE scope=? AND id NOT IN (
-    SELECT id FROM controller_decisions WHERE scope=? ORDER BY id DESC LIMIT 10
+    SELECT id FROM controller_decisions WHERE scope=? ORDER BY id DESC LIMIT ?
+);
+
+-- name: trim_all
+DELETE FROM controller_decisions WHERE id IN (
+    SELECT id FROM (SELECT id, row_number() OVER (PARTITION BY scope ORDER BY id DESC) AS n FROM controller_decisions) WHERE n > ?
 );
 
 -- name: finish_decision_update

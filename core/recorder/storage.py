@@ -11,7 +11,8 @@ from .diary import DiaryProtocol
 
 
 class Storage:
-    def __init__(self, path: Path, retention: int, log=None):
+    def __init__(self, path: Path, retention: int, log=None, *, decision_retention=100):
+        self.decision_retention = decision_retention
         self.path = path
         self.retention = retention
         self.log = log
@@ -24,6 +25,10 @@ class Storage:
             async with self.database.transaction() as tx:
                 await tx.execute(self.sql["reply_runs.open_update"])
                 await tx.execute(self.sql["controller_decisions.open_update"])
+                await tx.execute(
+                    self.sql["controller_decisions.trim_all"],
+                    (self.decision_retention,),
+                )
             await self.trim()
         except BaseException:
             await self.database.close()
@@ -228,7 +233,7 @@ class Storage:
             )
             await tx.execute(
                 self.sql["controller_decisions.record_decision_delete"],
-                (scope, scope),
+                (scope, scope, self.decision_retention),
             )
             return result.lastrowid
 

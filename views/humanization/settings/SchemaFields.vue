@@ -1,6 +1,7 @@
 <script setup>
 import { mdiPlus, mdiDeleteOutline } from '@mdi/js';
 import ResourceSelector from '../shared/ResourceSelector.vue';
+import { formatBytes } from '../shared/size.js';
 const props = defineProps({ schema:Object, model:Object, choices:Object });
 function visible(field) { return Object.entries(field.condition || {}).every(([key,value]) => props.model[key] === value); }
 function options(field) {
@@ -45,6 +46,7 @@ function updateNumber(key, value) { props.model[key] = value === '' ? '' : Numbe
       <v-combobox v-else-if="field.type === 'list'" v-model="model[key]" :label="field.description" :hint="field.hint" persistent-hint multiple chips closable-chips />
       <v-text-field v-else-if="['int','float'].includes(field.type)" :model-value="model[key]" :label="field.description" :hint="field.hint" persistent-hint type="number" :step="field.type === 'int' ? 1 : 'any'" @update:model-value="updateNumber(key,$event)" />
       <v-text-field v-else v-model="model[key]" :label="field.description" :hint="field.hint" persistent-hint />
+      <p v-if="key === 'media_max_mb'" class="text-caption text-medium-emphasis mt-2">当前上限：{{ formatBytes(Number(model[key]) * 1024 * 1024) }}</p>
     </div>
   </template>
 </template>

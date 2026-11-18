@@ -148,7 +148,7 @@ async def test_history_is_bounded_per_scope_survives_restart_and_omits_old_guida
     event = Event()
     await consume(plugin.observe(event))
     message = event.get_extra("humanization_message")
-    for index in range(12):
+    for index in range(102):
         await plugin.storage.record_decision(
             message.scope,
             plan_data(guidance="private old guidance"),
@@ -162,10 +162,24 @@ async def test_history_is_bounded_per_scope_survives_restart_and_omits_old_guida
         "other", plan_data(reply=False), 1, 1, 1, "message", False
     )
     rows = await plugin.storage.decisions(message.scope)
-    assert len(rows) == 10 and rows[0]["created_at"] == 2
+    assert len(rows) == 10 and rows[0]["created_at"] == 92
+    saved = await plugin.storage.rows(
+        "SELECT created_at FROM controller_decisions WHERE scope=? ORDER BY id",
+        (message.scope,),
+    )
+    assert len(saved) == 100 and saved[0]["created_at"] == 2
+    plugin.storage.decision_retention = 20
     assert len(await plugin.storage.decisions("other")) == 1
     await plugin.storage.close()
     await plugin.storage.open()
+    assert (
+        len(
+            await plugin.storage.rows(
+                "SELECT id FROM controller_decisions WHERE scope=?", (message.scope,)
+            )
+        )
+        == 20
+    )
     assert all(
         row["outcome"] == "unconfirmed"
         for row in await plugin.storage.decisions(message.scope)
@@ -178,7 +192,7 @@ async def test_history_is_bounded_per_scope_survives_restart_and_omits_old_guida
     assert len(payload["recent_decisions"]) == 10
     assert "private old guidance" not in plugin.controller.generate.call_args.args[2]
     assert all("age_seconds" not in row for row in payload["recent_decisions"])
-    assert payload["recent_decisions"][0]["time"] == "1970-01-01T08:00:02+08:00"
+    assert payload["recent_decisions"][0]["time"] == "1970-01-01T08:01:32+08:00"
     assert (await plugin.storage.decisions(message.scope))[-1]["outcome"] == "observed"
 
 

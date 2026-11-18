@@ -42,18 +42,7 @@ SELECT d.*, d.day AS id, d.updated_at AS timestamp, d.through_seq AS seq,
  (SELECT COUNT(*) FROM diary_topics t WHERE t.scope=d.scope AND t.day=d.day) AS topic_count
 FROM diary_days d
 
--- name: count
-SELECT COUNT(*) AS total FROM ({source})
-WHERE (:sessions='[]' OR (
- json_extract(scope,'$[0]') || ':' || CASE json_extract(scope,'$[2]')
- WHEN 'private' THEN 'FriendMessage' ELSE 'GroupMessage' END || ':' || json_extract(scope,'$[3]')
- IN (SELECT value FROM json_each(:sessions))))
- AND (:chat_type='' OR json_extract(scope,'$[2]')=:chat_type)
- AND (:start='' OR day>=:start) AND (:end='' OR day<=:end)
- AND (:q='' OR instr(lower(search),lower(:q))>0)
- AND ({filters})
-
--- name: page
+-- name: filtered
 SELECT * FROM ({source})
 WHERE (:sessions='[]' OR (
  json_extract(scope,'$[0]') || ':' || CASE json_extract(scope,'$[2]')
@@ -62,8 +51,16 @@ WHERE (:sessions='[]' OR (
  AND (:chat_type='' OR json_extract(scope,'$[2]')=:chat_type)
  AND (:start='' OR day>=:start) AND (:end='' OR day<=:end)
  AND (:q='' OR instr(lower(search),lower(:q))>0)
- AND ({filters})
-ORDER BY {order}, scope, id LIMIT :limit OFFSET :skip
+ AND (:scope='' OR scope=:scope) AND ({filters})
+
+-- name: grouped_messages
+SELECT scope, COUNT(*) AS message_count, MAX(timestamp) AS timestamp FROM ({source}) GROUP BY scope
+
+-- name: count
+SELECT COUNT(*) AS total FROM ({source});
+
+-- name: page
+SELECT * FROM ({source}) ORDER BY {order} LIMIT :limit OFFSET :skip
 
 -- name: sort_conversation
 COALESCE((SELECT NULLIF(value,key) FROM json_each(:session_labels) WHERE key=
