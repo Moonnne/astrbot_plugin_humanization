@@ -30,8 +30,8 @@ rows[1].segments.push({type:'image',resource_id:'old'});
 rows[1].resources.push({id:'old',kind:'image',name:'旧图.jpg',path:'',size:100,description:'过期图片转述'});
 const records = {
   messages:rows,
-  decisions:rows.map((row,index)=>({...row, headline:'根据当前话题简短回应', outcome:index ? 'processed' : 'unconfirmed', decision_json:{reply:true,emotion:{primary:'SELF_CONSCIOUS',intensity:1},plan:{guidance:'简短接话'}}})),
-  topics:rows.map(row=>({...row,day:'2026-10-19',topic:'讨论天气',interact:['测试用户分享天气'],reply:'我简短回应',reaction:'未见明确反应'})),
+  decisions:rows.map((row,index)=>({...row, headline:'根据当前话题简短回应', outcome:index ? 'observed' : 'unconfirmed', decision:index ? 0 : 1, emotion:'SELF_CONSCIOUS'})),
+  topics:rows.map((row,index)=>({...row,day:'2026-10-19',sealed:index,topic:'讨论天气',interact:['测试用户分享天气'],reply:'我简短回应',reaction:'未见明确反应'})),
   diaries:rows.map(row=>({...row,day:'2026-10-19',sealed:0,topic_count:2,coverage_gap:0,topics:[]})),
 };
 const promptDefaults = Object.fromEntries(await Promise.all(['behavior','expression','group','private'].map(async name=>[name,(await readFile(join(root,`resource/prompts/${name}.txt`),'utf8')).trim()])));
@@ -128,7 +128,8 @@ try {
   if (process.argv.includes('--table-sorting')) {
     for (const category of ['最近反应','话题','日记']) {
       await view.getByRole('tab',{name:category,exact:true}).click();
-      for (const [title,key] of [[category === '最近反应' ? '规划原因' : '内容','headline'],['时间','timestamp'],['会话','conversation'],[category === '聊天' ? '发送者' : '状态','state']]) {
+      const extras = category === '最近反应' ? [['决定','decision'],['情绪','emotion']] : category === '话题' ? [['日记日期','day']] : [];
+      for (const [title,key] of [[category === '最近反应' ? '规划原因' : '内容','headline'],['时间','timestamp'],['会话','conversation'],['状态','state'],...extras]) {
         const header = view.locator('thead th').filter({hasText:title});
         await header.getByRole('button',{name:new RegExp(title)}).click();
         await expect.poll(()=>page.evaluate(()=>window.calls.filter(call=>call.endpoint === 'records').at(-1)?.params.sort)).toBe(key);
@@ -146,6 +147,9 @@ try {
   if (process.argv.includes('--workspace-upgrade')) {
     await view.getByRole('tab',{name:'话题',exact:true}).click();
     await expect(view.locator('.session-name').first()).toHaveText('测试群');
+    await expect(view.getByRole('cell',{name:'未归档',exact:true})).toHaveCount(1);
+    await expect(view.getByRole('cell',{name:'已归档',exact:true})).toHaveCount(1);
+    await expect(view.getByRole('cell',{name:'2026-10-19',exact:true})).toHaveCount(2);
     await expect(view.locator('.session-name').first()).toHaveAttribute('title','onebot · 群聊 · 测试群\nonebot:GroupMessage:123');
     const wrapper = view.locator('.records-table .v-table__wrapper');
     expect(await wrapper.evaluate(el=>el.scrollWidth <= el.clientWidth + 1)).toBeTruthy();
@@ -408,8 +412,9 @@ try {
   await view.getByRole('tab',{name:'最近反应',exact:true}).click();
   await expect(view.getByRole('combobox').filter({hasText:'规划情绪'})).toBeVisible();
   await expect(view.getByText('结果未确认',{exact:true})).toBeVisible();
-  const states = await view.locator('.decision-state').evaluateAll(elements=>elements.map(e=>{const cell=e.closest('td').getBoundingClientRect(),box=e.getBoundingClientRect();return box.top >= cell.top && box.bottom <= cell.bottom;}));
-  expect(states).toEqual([true,true]);
+  const observed = view.getByRole('row').filter({has:view.getByRole('cell',{name:'观望',exact:true})});
+  await expect(observed.getByRole('cell',{name:'难为情',exact:true})).toBeVisible();
+  await expect(observed.getByRole('cell',{name:'无需执行',exact:true})).toBeVisible();
   await page.screenshot({path:join(output,'decisions.png'),animations:'disabled'});
   await view.getByRole('tab',{name:'设置',exact:true}).click();
   await view.getByLabel('机器人名称',{exact:true}).fill('再次修改');

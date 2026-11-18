@@ -380,12 +380,19 @@ class Storage:
                     (idle_human, day, day, scope),
                 )
 
-    async def start_reply(self, scope: str, now: float, trigger: str) -> int:
+    async def start_reply(
+        self, scope: str, now: float, trigger: str, decision_id: int | None = None
+    ) -> int:
         async with self.database.transaction() as tx:
             cursor = await tx.execute(
                 self.sql["reply_runs.start_reply_insert"],
                 (scope, now, trigger),
             )
+            if decision_id is not None:
+                await tx.execute(
+                    self.sql["controller_decisions.finish_decision_update"],
+                    ("running", decision_id),
+                )
             await tx.execute(self.sql["reply_runs.trim_delete"])
             return cursor.lastrowid
 

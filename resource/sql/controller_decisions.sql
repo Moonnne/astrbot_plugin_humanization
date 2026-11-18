@@ -35,4 +35,4 @@ DELETE FROM controller_decisions;
 -- name: open_update
 UPDATE controller_decisions
 SET outcome='unconfirmed'
-WHERE outcome='pending';
+WHERE outcome IN ('pending','running');

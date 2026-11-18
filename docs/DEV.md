@@ -184,7 +184,7 @@ Controller／主模型观察和 Recorder 摘要通过同一身份查询筛选已
 
 每个会话在 SQLite 默认保留最近 100 条有效决策，模型最多读取最近 10 条，包括沉默；重启延续，重置时清除。后续输入仅投影旧情绪、结论、时间、焦点和执行状态，不重复旧 guidance。模型根据实际间隔与新刺激延续或减弱情绪，无独立轮询或固定衰减公式。
 
-规划执行状态包括 `observed`、`pending`、`processed`、`unconfirmed`、`failed`、`superseded`。重启将遗留 pending 标为 unconfirmed。`processed` 仅代表原生发送阶段完成，不等于平台送达或对方已读。
+规划选择观望时，执行状态为 `observed`（无需执行）。决定回复时先记为 `pending`，创建回复任务的同一事务将其更新为 `running`。结束时记录 `processed`（原生发送流程完成）、`failed`、`superseded` 或 `unconfirmed`。重启将遗留的 `pending` 和 `running` 标为 `unconfirmed`。平台送达与已读需要额外回执。
 
 ### 主模型与最终输出
 

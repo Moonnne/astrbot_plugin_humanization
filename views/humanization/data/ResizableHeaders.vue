@@ -4,7 +4,7 @@ import { mdiArrowUpDown } from '@mdi/js';
 defineOptions({inheritAttrs:false});
 const props = defineProps({ columns:Array, widths:Object, defaults:Object, sortBy:Array, isSorted:Function, toggleSort:Function, getSortIcon:Function, allSelected:Boolean, someSelected:Boolean, selectAll:Function });
 const emit = defineEmits(['resize']);
-const minimum = key => ({timestamp:144,conversation:128,headline:160,state:112,actions:88}[key] || 48);
+const minimum = key => ({timestamp:144,conversation:128,headline:160,state:84,decision:84,emotion:84,day:120,actions:88}[key] || 48);
 let dragging;
 function resize(key, width) { emit('resize',{key,width:Math.max(minimum(key),Math.round(width))}); }
 function move(event) { if (dragging) resize(dragging.key,dragging.width + event.clientX - dragging.x); }

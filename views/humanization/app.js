@@ -264,10 +264,11 @@ const _sfc_main$c = {
 const ChatMessages = /* @__PURE__ */ _export_sfc(_sfc_main$c, [["__scopeId", "data-v-9a34610f"]]);
 const outcomes = [
   ["pending", "待执行"],
+  ["running", "执行中"],
   ["processed", "发送流程完成"],
-  ["observed", "保持沉默"],
-  ["failed", "失败"],
-  ["superseded", "已被取代"],
+  ["observed", "无需执行"],
+  ["failed", "执行失败"],
+  ["superseded", "已中止"],
   ["unconfirmed", "结果未确认"]
 ].map(([value, title]) => ({ value, title }));
 const emotions = [
@@ -292,7 +293,7 @@ function sessionLabel(umo, name) {
   const label = name && name !== umo ? name : id;
   return `${platform} · ${kind === "GroupMessage" ? "群聊" : "私聊"} · ${label}`;
 }
-const _withScopeId$7 = (n) => (pushScopeId("data-v-2d955fbd"), n = n(), popScopeId(), n);
+const _withScopeId$7 = (n) => (pushScopeId("data-v-bbc772a5"), n = n(), popScopeId(), n);
 const _hoisted_1$a = { class: "d-flex align-center ga-1 mb-4" };
 const _hoisted_2$9 = /* @__PURE__ */ _withScopeId$7(() => /* @__PURE__ */ createBaseVNode("span", { class: "text-subtitle-1 font-weight-bold flex-grow-1" }, "筛选", -1));
 const _hoisted_3$9 = {
@@ -310,7 +311,7 @@ const _hoisted_11$2 = { class: "type-options mb-4" };
 const _hoisted_12$2 = ["aria-pressed", "onClick"];
 const _sfc_main$b = {
   __name: "FilterPanel",
-  props: { category: String, model: Object, sessions: Array, active: Boolean },
+  props: { category: String, model: Object, sessions: Array, sortChoices: Array, active: Boolean },
   emits: ["collapse", "reset"],
   setup(__props) {
     const props = __props;
@@ -320,7 +321,6 @@ const _sfc_main$b = {
     });
     const all = { title: "全部", value: "" };
     const components = [["text", "文字"], ["at", "@ 提及"], ["image", "图片"], ["video", "视频"], ["record", "语音"], ["file", "文件"], ["poke", "戳一戳"]].map(([value, title]) => ({ value, title }));
-    const sorts = [["timestamp:desc", "时间：从新到旧"], ["timestamp:asc", "时间：从旧到新"], ["headline:asc", "内容：正序"], ["headline:desc", "内容：倒序"]].map(([value, title]) => ({ value, title }));
     function toggle(key, value) {
       props.model[key] = props.model[key] === value ? "" : value;
     }
@@ -508,23 +508,31 @@ const _sfc_main$b = {
               "hide-details": ""
             }, null, 8, ["modelValue", "items"])
           ], 64)) : __props.category === "topics" ? (openBlock(), createElementBlock(Fragment, { key: 3 }, [
+            createVNode(_component_v_select, {
+              modelValue: __props.model.kind,
+              "onUpdate:modelValue": _cache[12] || (_cache[12] = ($event) => __props.model.kind = $event),
+              label: "归档状态",
+              items: [all, { title: "未归档", value: "0" }, { title: "已归档", value: "1" }],
+              "hide-details": "",
+              class: "mb-4"
+            }, null, 8, ["modelValue", "items"]),
             createVNode(_component_v_text_field, {
               modelValue: __props.model.participant,
-              "onUpdate:modelValue": _cache[12] || (_cache[12] = ($event) => __props.model.participant = $event),
+              "onUpdate:modelValue": _cache[13] || (_cache[13] = ($event) => __props.model.participant = $event),
               label: "参与者或参与行为",
               "hide-details": "",
               class: "mb-4"
             }, null, 8, ["modelValue"]),
             createVNode(_component_v_text_field, {
               modelValue: __props.model.bot_reply,
-              "onUpdate:modelValue": _cache[13] || (_cache[13] = ($event) => __props.model.bot_reply = $event),
+              "onUpdate:modelValue": _cache[14] || (_cache[14] = ($event) => __props.model.bot_reply = $event),
               label: "我的行为关键词",
               "hide-details": ""
             }, null, 8, ["modelValue"])
           ], 64)) : (openBlock(), createElementBlock(Fragment, { key: 4 }, [
             createVNode(_component_v_select, {
               modelValue: __props.model.kind,
-              "onUpdate:modelValue": _cache[14] || (_cache[14] = ($event) => __props.model.kind = $event),
+              "onUpdate:modelValue": _cache[15] || (_cache[15] = ($event) => __props.model.kind = $event),
               label: "日记状态",
               items: [all, { title: "未封存", value: "0" }, { title: "已封存", value: "1" }],
               "hide-details": "",
@@ -532,7 +540,7 @@ const _sfc_main$b = {
             }, null, 8, ["modelValue", "items"]),
             createVNode(_component_v_select, {
               modelValue: __props.model.coverage_gap,
-              "onUpdate:modelValue": _cache[15] || (_cache[15] = ($event) => __props.model.coverage_gap = $event),
+              "onUpdate:modelValue": _cache[16] || (_cache[16] = ($event) => __props.model.coverage_gap = $event),
               label: "消息覆盖",
               items: [all, { title: "无缺口标记", value: "0" }, { title: "存在缺口", value: "1" }],
               "hide-details": ""
@@ -541,7 +549,7 @@ const _sfc_main$b = {
           createVNode(_component_v_divider, { class: "my-5" }),
           createVNode(_component_v_text_field, {
             modelValue: __props.model.start,
-            "onUpdate:modelValue": _cache[16] || (_cache[16] = ($event) => __props.model.start = $event),
+            "onUpdate:modelValue": _cache[17] || (_cache[17] = ($event) => __props.model.start = $event),
             type: "date",
             label: "开始日期",
             "hide-details": "",
@@ -549,7 +557,7 @@ const _sfc_main$b = {
           }, null, 8, ["modelValue"]),
           createVNode(_component_v_text_field, {
             modelValue: __props.model.end,
-            "onUpdate:modelValue": _cache[17] || (_cache[17] = ($event) => __props.model.end = $event),
+            "onUpdate:modelValue": _cache[18] || (_cache[18] = ($event) => __props.model.end = $event),
             type: "date",
             label: "结束日期",
             "hide-details": "",
@@ -557,9 +565,9 @@ const _sfc_main$b = {
           }, null, 8, ["modelValue"]),
           createVNode(_component_v_select, {
             modelValue: __props.model.sort,
-            "onUpdate:modelValue": _cache[18] || (_cache[18] = ($event) => __props.model.sort = $event),
+            "onUpdate:modelValue": _cache[19] || (_cache[19] = ($event) => __props.model.sort = $event),
             label: "排序",
-            items: __props.category === "messages" ? unref(sorts).slice(0, 2) : unref(sorts),
+            items: __props.sortChoices,
             "hide-details": ""
           }, null, 8, ["modelValue", "items"])
         ]),
@@ -568,7 +576,7 @@ const _sfc_main$b = {
     };
   }
 };
-const FilterPanel = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["__scopeId", "data-v-2d955fbd"]]);
+const FilterPanel = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["__scopeId", "data-v-bbc772a5"]]);
 const _hoisted_1$9 = ["aria-sort", "onClick"];
 const _hoisted_2$8 = ["aria-label", "onClick"];
 const _hoisted_3$8 = { key: 1 };
@@ -578,7 +586,7 @@ const _sfc_main$a = /* @__PURE__ */ Object.assign({ inheritAttrs: false }, {
   props: { columns: Array, widths: Object, defaults: Object, sortBy: Array, isSorted: Function, toggleSort: Function, getSortIcon: Function, allSelected: Boolean, someSelected: Boolean, selectAll: Function },
   emits: ["resize"],
   setup(__props, { emit }) {
-    const minimum = (key) => ({ timestamp: 144, conversation: 128, headline: 160, state: 112, actions: 88 })[key] || 48;
+    const minimum = (key) => ({ timestamp: 144, conversation: 128, headline: 160, state: 84, decision: 84, emotion: 84, day: 120, actions: 88 })[key] || 48;
     let dragging;
     function resize(key, width) {
       emit("resize", { key, width: Math.max(minimum(key), Math.round(width)) });
@@ -661,8 +669,8 @@ const _sfc_main$a = /* @__PURE__ */ Object.assign({ inheritAttrs: false }, {
     };
   }
 });
-const ResizableHeaders = /* @__PURE__ */ _export_sfc(_sfc_main$a, [["__scopeId", "data-v-fa463a85"]]);
-const _withScopeId$6 = (n) => (pushScopeId("data-v-bbbe8c8a"), n = n(), popScopeId(), n);
+const ResizableHeaders = /* @__PURE__ */ _export_sfc(_sfc_main$a, [["__scopeId", "data-v-ab3151a1"]]);
+const _withScopeId$6 = (n) => (pushScopeId("data-v-7d132238"), n = n(), popScopeId(), n);
 const _hoisted_1$8 = { class: "d-flex align-center flex-wrap ga-3 mb-4" };
 const _hoisted_2$7 = {
   key: 1,
@@ -680,36 +688,22 @@ const _hoisted_8$5 = {
 const _hoisted_9$3 = { class: "d-flex align-center justify-center ga-3 pa-2" };
 const _hoisted_10$3 = ["title"];
 const _hoisted_11$1 = ["title"];
-const _hoisted_12$1 = {
-  key: 0,
-  class: "text-caption"
-};
-const _hoisted_13 = ["title"];
-const _hoisted_14 = { class: "text-truncate" };
-const _hoisted_15 = {
-  key: 1,
-  class: "decision-state d-flex flex-column align-start ga-1 py-1"
-};
-const _hoisted_16 = { class: "text-caption text-break" };
-const _hoisted_17 = { class: "text-caption text-break" };
-const _hoisted_18 = { key: 2 };
+const _hoisted_12$1 = { key: 0 };
+const _hoisted_13 = { key: 1 };
+const _hoisted_14 = { key: 2 };
+const _hoisted_15 = { class: "d-flex flex-wrap ga-2 mb-3" };
+const _hoisted_16 = ["src"];
+const _hoisted_17 = ["src"];
+const _hoisted_18 = ["src"];
 const _hoisted_19 = {
-  key: 3,
-  class: "text-caption"
-};
-const _hoisted_20 = { class: "d-flex flex-wrap ga-2 mb-3" };
-const _hoisted_21 = ["src"];
-const _hoisted_22 = ["src"];
-const _hoisted_23 = ["src"];
-const _hoisted_24 = {
   key: 0,
   class: "mt-3"
 };
-const _hoisted_25 = {
+const _hoisted_20 = {
   key: 1,
   class: "mt-3"
 };
-const _hoisted_26 = /* @__PURE__ */ _withScopeId$6(() => /* @__PURE__ */ createBaseVNode("p", { class: "mt-3" }, "仅处理插件数据，不清除 AstrBot 原生对话。正在回复或整理时会拒绝删除，请稍后重试。", -1));
+const _hoisted_21 = /* @__PURE__ */ _withScopeId$6(() => /* @__PURE__ */ createBaseVNode("p", { class: "mt-3" }, "仅处理插件数据，不清除 AstrBot 原生对话。正在回复或整理时会拒绝删除，请稍后重试。", -1));
 const _sfc_main$9 = {
   __name: "Records",
   props: { category: String, sessions: Array, refresh: Number, timezone: String },
@@ -733,9 +727,16 @@ const _sfc_main$9 = {
       load();
     }
     const sessionTitles = computed(() => Object.fromEntries(props.sessions.map((item) => [item.umo, item.title !== item.umo ? item.title : item.umo.split(":").slice(2).join(":")])));
-    const defaultWidths = { timestamp: 168, conversation: 172, headline: 216, state: 132, actions: 88 };
+    const defaultWidths = {
+      timestamp: 168,
+      conversation: 172,
+      headline: 216,
+      state: props.category === "topics" ? 96 : 132,
+      day: 128,
+      actions: 88,
+      ...props.category === "decisions" && { timestamp: 152, conversation: 144, headline: 172, decision: 84, emotion: 84, state: 124 }
+    };
     const widths = reactive({ ...defaultWidths });
-    const tableWidth = computed(() => Object.values(widths).reduce((sum, width) => sum + width, 48));
     const page = ref(1), limit = ref(25);
     const sort = computed({
       get() {
@@ -765,9 +766,22 @@ const _sfc_main$9 = {
       { title: "时间", key: "timestamp", width: widths.timestamp },
       { title: "会话", key: "conversation", width: widths.conversation },
       { title: props.category === "decisions" ? "规划原因" : "内容", key: "headline", width: widths.headline },
-      { title: props.category === "messages" ? "发送者" : "状态", key: "state", width: widths.state },
+      ...props.category === "decisions" ? [
+        { title: "决定", key: "decision", width: widths.decision },
+        { title: "情绪", key: "emotion", width: widths.emotion }
+      ] : [],
+      { title: "状态", key: "state", width: widths.state },
+      ...props.category === "topics" ? [{ title: "日记日期", key: "day", width: widths.day }] : [],
       { title: "操作", key: "actions", sortable: false, width: widths.actions, cellProps: { class: "record-actions" } }
     ]);
+    const tableWidth = computed(() => headers.value.reduce((sum, column) => sum + column.width, 48));
+    const sortChoices = computed(() => {
+      const columns = props.category === "messages" ? headers.value.slice(0, 1) : headers.value.filter((col) => col.sortable !== false);
+      return columns.flatMap(({ title, key }) => {
+        const [asc, desc] = key === "timestamp" ? ["从旧到新", "从新到旧"] : ["正序", "倒序"];
+        return [{ value: `${key}:desc`, title: `${title}：${desc}` }, { value: `${key}:asc`, title: `${title}：${asc}` }];
+      });
+    });
     function time(value) {
       return new Date(value * 1e3).toLocaleString("zh-CN", { timeZone: props.timezone, hour12: false });
     }
@@ -926,10 +940,11 @@ const _sfc_main$9 = {
                   category: __props.category,
                   model: filters,
                   sessions: __props.sessions,
+                  "sort-choices": sortChoices.value,
                   active: filtersOpen.value,
                   onCollapse: _cache[4] || (_cache[4] = ($event) => filtersOpen.value = false),
                   onReset: _cache[5] || (_cache[5] = ($event) => Object.assign(filters, defaults, { sessions: [] }))
-                }, null, 8, ["category", "model", "sessions", "active"])
+                }, null, 8, ["category", "model", "sessions", "sort-choices", "active"])
               ], 8, _hoisted_6$7), [
                 [vShow, filtersOpen.value]
               ])
@@ -1052,28 +1067,27 @@ ${item.conversation}`
                     title: item.headline
                   }, toDisplayString(item.headline), 9, _hoisted_11$1)
                 ]),
-                "item.state": withCtx(({ item }) => {
-                  var _a, _b;
+                "item.decision": withCtx(({ item }) => [
+                  createVNode(_component_v_chip, {
+                    size: "small",
+                    color: item.decision ? "primary" : void 0
+                  }, {
+                    default: withCtx(() => [
+                      createTextVNode(toDisplayString(item.decision ? "回复" : "观望"), 1)
+                    ]),
+                    _: 2
+                  }, 1032, ["color"])
+                ]),
+                "item.emotion": withCtx(({ item }) => {
+                  var _a;
                   return [
-                    __props.category === "messages" ? (openBlock(), createElementBlock("div", _hoisted_12$1, [
-                      createBaseVNode("div", {
-                        class: "text-truncate",
-                        title: item.sender_name
-                      }, toDisplayString(item.sender_name), 9, _hoisted_13),
-                      createBaseVNode("div", _hoisted_14, toDisplayString(item.direction === "out" ? "机器人回复" : item.sender_id), 1)
-                    ])) : __props.category === "decisions" ? (openBlock(), createElementBlock("div", _hoisted_15, [
-                      createVNode(_component_v_chip, {
-                        size: "small",
-                        color: item.decision_json.reply ? "primary" : void 0
-                      }, {
-                        default: withCtx(() => [
-                          createTextVNode(toDisplayString(item.decision_json.reply ? "回复" : "观望"), 1)
-                        ]),
-                        _: 2
-                      }, 1032, ["color"]),
-                      createBaseVNode("span", _hoisted_16, toDisplayString(((_a = unref(emotions).find((e) => e.value === item.decision_json.emotion.primary)) == null ? void 0 : _a.title) || item.decision_json.emotion.primary), 1),
-                      createBaseVNode("span", _hoisted_17, toDisplayString(((_b = unref(outcomes).find((o) => o.value === item.outcome)) == null ? void 0 : _b.title) || item.outcome), 1)
-                    ])) : __props.category === "diaries" ? (openBlock(), createElementBlock("span", _hoisted_18, toDisplayString(item.sealed ? "已封存" : "未封存") + " · " + toDisplayString(item.topic_count) + " 个话题", 1)) : (openBlock(), createElementBlock("span", _hoisted_19, toDisplayString(item.day), 1))
+                    createTextVNode(toDisplayString(((_a = unref(emotions).find((e) => e.value === item.emotion)) == null ? void 0 : _a.title) || item.emotion || "—"), 1)
+                  ];
+                }),
+                "item.state": withCtx(({ item }) => {
+                  var _a;
+                  return [
+                    __props.category === "decisions" ? (openBlock(), createElementBlock("span", _hoisted_12$1, toDisplayString(((_a = unref(outcomes).find((o) => o.value === item.outcome)) == null ? void 0 : _a.title) || item.outcome), 1)) : __props.category === "topics" ? (openBlock(), createElementBlock("span", _hoisted_13, toDisplayString(item.sealed ? "已归档" : "未归档"), 1)) : (openBlock(), createElementBlock("span", _hoisted_14, toDisplayString(item.sealed ? "已封存" : "未封存") + " · " + toDisplayString(item.topic_count) + " 个话题", 1))
                   ];
                 }),
                 "item.actions": withCtx(({ item }) => [
@@ -1118,7 +1132,7 @@ ${item.conversation}`
                   default: withCtx(() => {
                     var _a, _b, _c, _d;
                     return [
-                      createBaseVNode("div", _hoisted_20, [
+                      createBaseVNode("div", _hoisted_15, [
                         (openBlock(true), createElementBlock(Fragment, null, renderList((((_a = detail.value) == null ? void 0 : _a.resources) || []).filter((r) => r.path && ["image", "record", "video"].includes(r.kind)), (resource) => {
                           return openBlock(), createBlock(_component_v_btn, {
                             key: resource.id,
@@ -1137,16 +1151,16 @@ ${item.conversation}`
                         src: mediaPreview.value.url,
                         alt: "聊天图片",
                         style: { "max-width": "100%", "max-height": "420px" }
-                      }, null, 8, _hoisted_21)) : ((_c = mediaPreview.value) == null ? void 0 : _c.kind) === "record" ? (openBlock(), createElementBlock("audio", {
+                      }, null, 8, _hoisted_16)) : ((_c = mediaPreview.value) == null ? void 0 : _c.kind) === "record" ? (openBlock(), createElementBlock("audio", {
                         key: 1,
                         src: mediaPreview.value.url,
                         controls: ""
-                      }, null, 8, _hoisted_22)) : ((_d = mediaPreview.value) == null ? void 0 : _d.kind) === "video" ? (openBlock(), createElementBlock("video", {
+                      }, null, 8, _hoisted_17)) : ((_d = mediaPreview.value) == null ? void 0 : _d.kind) === "video" ? (openBlock(), createElementBlock("video", {
                         key: 2,
                         src: mediaPreview.value.url,
                         controls: "",
                         style: { "max-width": "100%", "max-height": "420px" }
-                      }, null, 8, _hoisted_23)) : createCommentVNode("", true),
+                      }, null, 8, _hoisted_18)) : createCommentVNode("", true),
                       createVNode(_sfc_main$e, { value: detailFields.value }, null, 8, ["value"])
                     ];
                   }),
@@ -1190,9 +1204,9 @@ ${item.conversation}`
                 createVNode(_component_v_card_text, null, {
                   default: withCtx(() => [
                     createTextVNode(" 将永久删除所选 " + toDisplayString(selected.value.length) + " 条" + toDisplayString(titles[__props.category]) + "。 ", 1),
-                    __props.category === "diaries" ? (openBlock(), createElementBlock("p", _hoisted_24, "这些日期下的话题会一并删除。")) : createCommentVNode("", true),
-                    __props.category === "messages" ? (openBlock(), createElementBlock("p", _hoisted_25, "关联媒体文件及转述记录一并删除。已有日记仍保留，消息累计序号不回退。文件被占用时后台继续清理。当前群聊消息不足门槛时，会重新进入观察期。")) : createCommentVNode("", true),
-                    _hoisted_26
+                    __props.category === "diaries" ? (openBlock(), createElementBlock("p", _hoisted_19, "这些日期下的话题会一并删除。")) : createCommentVNode("", true),
+                    __props.category === "messages" ? (openBlock(), createElementBlock("p", _hoisted_20, "关联媒体文件及转述记录一并删除。已有日记仍保留，消息累计序号不回退。文件被占用时后台继续清理。当前群聊消息不足门槛时，会重新进入观察期。")) : createCommentVNode("", true),
+                    _hoisted_21
                   ]),
                   _: 1
                 }),
@@ -1231,7 +1245,7 @@ ${item.conversation}`
     };
   }
 };
-const Records = /* @__PURE__ */ _export_sfc(_sfc_main$9, [["__scopeId", "data-v-bbbe8c8a"]]);
+const Records = /* @__PURE__ */ _export_sfc(_sfc_main$9, [["__scopeId", "data-v-7d132238"]]);
 const _withScopeId$5 = (n) => (pushScopeId("data-v-0b84bc79"), n = n(), popScopeId(), n);
 const _hoisted_1$7 = { class: "resource-field" };
 const _hoisted_2$6 = { class: "resource-row" };

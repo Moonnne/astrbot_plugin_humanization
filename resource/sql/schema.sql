@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS controller_decisions (
 );
 CREATE INDEX IF NOT EXISTS controller_decisions_recent
     ON controller_decisions(scope,id DESC);
+CREATE INDEX IF NOT EXISTS controller_decisions_timeline
+    ON controller_decisions(created_at DESC, scope, id);
+CREATE INDEX IF NOT EXISTS diary_topics_timeline
+    ON diary_topics(topic_at DESC, scope, id);
 CREATE INDEX IF NOT EXISTS diary_topics_updated
     ON diary_topics(scope,updated_at DESC,id DESC);
 PRAGMA user_version=3;

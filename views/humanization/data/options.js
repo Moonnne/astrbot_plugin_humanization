@@ -1,6 +1,6 @@
 export const outcomes = [
-  ['pending','待执行'], ['processed','发送流程完成'], ['observed','保持沉默'],
-  ['failed','失败'], ['superseded','已被取代'], ['unconfirmed','结果未确认'],
+  ['pending','待执行'], ['running','执行中'], ['processed','发送流程完成'], ['observed','无需执行'],
+  ['failed','执行失败'], ['superseded','已中止'], ['unconfirmed','结果未确认'],
 ].map(([value,title]) => ({value,title}));
 
 export const emotions = [

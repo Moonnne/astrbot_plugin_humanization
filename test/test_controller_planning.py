@@ -119,7 +119,7 @@ async def test_forced_plan_is_temporary_and_records_actual_execution(plugin, fin
     payload = json.loads(plugin.controller.generate.call_args.args[2])
     assert payload["reply_required"] is True and payload["now"].endswith("+08:00")
     rows = await plugin.storage.decisions(message.scope)
-    assert rows[0]["outcome"] == "pending"
+    assert rows[0]["outcome"] == "running"
     await plugin.inject(event, request)
     part = request.extra_user_content_parts[-1].model_dump_for_context()
     assert part["_no_save"] is True and '"primary":"JOY"' in part["text"]
@@ -170,6 +170,8 @@ async def test_history_is_bounded_per_scope_survives_restart_and_omits_old_guida
     assert len(saved) == 100 and saved[0]["created_at"] == 2
     plugin.storage.decision_retention = 20
     assert len(await plugin.storage.decisions("other")) == 1
+    await plugin.storage.start_reply(message.scope, 103, "message", rows[-1]["id"])
+    assert (await plugin.storage.decisions(message.scope))[-1]["outcome"] == "running"
     await plugin.storage.close()
     await plugin.storage.open()
     assert (

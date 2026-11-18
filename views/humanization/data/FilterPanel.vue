@@ -3,13 +3,12 @@ import { ref, watch } from 'vue';
 import { mdiMagnify, mdiChevronLeft, mdiFilterRemoveOutline } from '@mdi/js';
 import { emotions, outcomes } from './options.js';
 import { sessionLabel } from '../shared/session.js';
-const props = defineProps({ category:String, model:Object, sessions:Array, active:Boolean });
+const props = defineProps({ category:String, model:Object, sessions:Array, sortChoices:Array, active:Boolean });
 const sessionMenu = ref(false);
 watch(() => props.active, active => { if (!active) sessionMenu.value = false; });
 defineEmits(['collapse','reset']);
 const all = {title:'全部',value:''};
 const components = [['text','文字'],['at','@ 提及'],['image','图片'],['video','视频'],['record','语音'],['file','文件'],['poke','戳一戳']].map(([value,title])=>({value,title}));
-const sorts = [['timestamp:desc','时间：从新到旧'],['timestamp:asc','时间：从旧到新'],['headline:asc','内容：正序'],['headline:desc','内容：倒序']].map(([value,title])=>({value,title}));
 function toggle(key,value) {
   props.model[key] = props.model[key] === value ? '' : value;
 }
@@ -60,6 +59,7 @@ function matchSession(value, query, item) {
       <v-select v-model="model.required" label="是否必回复" :items="[all,{title:'必回复',value:'1'},{title:'普通评估',value:'0'}]" hide-details />
     </template>
     <template v-else-if="category === 'topics'">
+      <v-select v-model="model.kind" label="归档状态" :items="[all,{title:'未归档',value:'0'},{title:'已归档',value:'1'}]" hide-details class="mb-4" />
       <v-text-field v-model="model.participant" label="参与者或参与行为" hide-details class="mb-4" />
       <v-text-field v-model="model.bot_reply" label="我的行为关键词" hide-details />
     </template>
@@ -70,7 +70,7 @@ function matchSession(value, query, item) {
     <v-divider class="my-5" />
     <v-text-field v-model="model.start" type="date" label="开始日期" hide-details class="mb-4" />
     <v-text-field v-model="model.end" type="date" label="结束日期" hide-details class="mb-4" />
-    <v-select v-model="model.sort" label="排序" :items="category === 'messages' ? sorts.slice(0,2) : sorts" hide-details />
+    <v-select v-model="model.sort" label="排序" :items="sortChoices" hide-details />
   </v-card>
 </template>
 <style scoped>

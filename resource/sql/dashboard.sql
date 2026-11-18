@@ -26,13 +26,15 @@ FROM messages
 -- name: decisions
 SELECT *, created_at AS timestamp, observed_through_seq AS seq,
  date(created_at,'unixepoch',:offset) AS day, outcome AS kind,
+ json_extract(decision_json,'$.reply') AS decision,
+ json_extract(decision_json,'$.emotion.primary') AS emotion,
  json_extract(decision_json,'$.reason') AS headline, decision_json AS search
 FROM controller_decisions
 
 -- name: topics
-SELECT *, topic_at AS timestamp, first_seq AS seq, topic AS headline,
- '' AS kind, topic || ' ' || interact || ' ' || reply || ' ' || reaction AS search
-FROM diary_topics
+SELECT t.*, d.sealed, t.topic_at AS timestamp, t.first_seq AS seq, t.topic AS headline,
+ CAST(d.sealed AS TEXT) AS kind, t.topic || ' ' || t.interact || ' ' || t.reply || ' ' || t.reaction AS search
+FROM diary_topics t JOIN diary_days d USING (scope, day)
 
 -- name: diaries
 SELECT d.*, d.day AS id, d.updated_at AS timestamp, d.through_seq AS seq,
@@ -75,7 +77,7 @@ sender_name COLLATE NOCASE
 outcome COLLATE NOCASE
 
 -- name: sort_state_topics
-day
+sealed
 
 -- name: sort_state_diaries
 sealed
@@ -88,13 +90,14 @@ sealed
 
 -- name: filter_decisions
 (:kind='' OR outcome=:kind)
- AND (:reply='' OR CAST(json_extract(decision_json,'$.reply') AS TEXT)=:reply)
- AND (:emotion='' OR json_extract(decision_json,'$.emotion.primary')=:emotion)
+ AND (:reply='' OR CAST(decision AS TEXT)=:reply)
+ AND (:emotion='' OR emotion=:emotion)
  AND (:required='' OR CAST(reply_required AS TEXT)=:required)
  AND (:trigger='' OR trigger=:trigger)
 
 -- name: filter_topics
-(:participant='' OR instr(lower(interact),lower(:participant))>0)
+(:kind='' OR kind=:kind)
+ AND (:participant='' OR instr(lower(interact),lower(:participant))>0)
  AND (:bot_reply='' OR instr(lower(reply),lower(:bot_reply))>0)
 
 -- name: filter_diaries

@@ -24,6 +24,7 @@ class Dashboard:
     plugin_name = "astrbot_plugin_humanization"
     categories = {"messages", "decisions", "topics", "diaries"}
     sorts = {"timestamp", "headline", "seq", "conversation", "state"}
+    category_sorts = {"decisions": {"decision", "emotion"}, "topics": {"day"}}
 
     def __init__(self, plugin):
         self.plugin = plugin
@@ -147,7 +148,7 @@ class Dashboard:
         order = request.query.get("order", "desc")
         if (
             category not in self.categories
-            or sort not in self.sorts
+            or sort not in self.sorts | self.category_sorts.get(category, set())
             or order not in {"asc", "desc"}
         ):
             return error_response("无效的数据分类或排序字段")

@@ -645,6 +645,50 @@ async def test_visible_table_columns_sort_in_both_directions(dashboard, category
         assert status == 200 and result["total"] > 0
 
 
+async def test_decision_columns_sort_independently(dashboard):
+    store = dashboard.runtime.storage
+    _, data = await invoke(dashboard.records, query={"category": "decisions"})
+    scope = data["items"][0]["scope"]
+    await store.record_decision(
+        scope, plan_data(reply=False, emotion="JOY"), 1, 1, 1, "message", False
+    )
+    for column, values in (("decision", [0, 1]), ("emotion", ["JOY", "NEUTRAL"])):
+        for order, expected in (("asc", values), ("desc", values[::-1])):
+            _, data = await invoke(
+                dashboard.records,
+                query={"category": "decisions", "sort": column, "order": order},
+            )
+            assert [row[column] for row in data["items"]] == expected
+
+
+async def test_topic_status_tracks_diary_sealing(dashboard):
+    _, data = await invoke(dashboard.records, query={"category": "topics"})
+    first = data["items"][0]
+    await dashboard.runtime.storage.commit_summary(
+        first["scope"],
+        "2099-01-01",
+        [topic_change("新话题")],
+        4,
+        4,
+        first["timestamp"] + 86400,
+    )
+    for sort, expected in (
+        ("state", ["2099-01-01", first["day"]]),
+        ("day", [first["day"], "2099-01-01"]),
+    ):
+        _, data = await invoke(
+            dashboard.records,
+            query={"category": "topics", "sort": sort, "order": "asc"},
+        )
+        assert [row["day"] for row in data["items"]] == expected
+    for kind, day in (("1", first["day"]), ("0", "2099-01-01")):
+        _, data = await invoke(
+            dashboard.records, query={"category": "topics", "kind": kind}
+        )
+        assert data["total"] == 1
+        assert (data["items"][0]["day"], data["items"][0]["sealed"]) == (day, int(kind))
+
+
 async def test_conversation_sort_uses_names_and_sender_sort_uses_senders(dashboard):
     message = dashboard.runtime.adapter.snapshot(
         Event("另一群的消息", message_id="other")

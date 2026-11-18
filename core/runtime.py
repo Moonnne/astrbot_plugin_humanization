@@ -478,7 +478,10 @@ class Runtime:
                     self.log.debug("reply.skipped", reason="gate_wait")
                     return
                 run = await self.storage.start_reply(
-                    message.scope, time.time(), "idle" if idle else "message"
+                    message.scope,
+                    time.time(),
+                    "idle" if idle else "message",
+                    decision.record_id,
                 )
                 self.log.info(
                     "reply.start",
